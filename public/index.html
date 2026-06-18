@@ -351,8 +351,13 @@ function join() {
   connect(name);
 }
 
+// ── Équipes ─────────────────────────────────────────────────────────────────
+const TEAM_COLORS = ['#e74c3c', '#3498db'];
+const TEAM_NAMES  = ['Rouge', 'Bleu'];
+
 // ── Game state ──────────────────────────────────────────────────────────────
 let myId      = null;
+let myTeam    = 0;
 let gs        = null;
 let arenaW    = 1200;
 let arenaH    = 700;
@@ -361,6 +366,7 @@ let maxKills  = 15;
 let scale     = 1;
 let socket    = null;
 let killFeed  = [];
+let teamScores   = [0, 0];
 let rpsActive    = null;
 let rpsCountdown = null;
 const RPS_CLIENT = ['rock','paper','scissors'];
@@ -469,14 +475,19 @@ function connect(name) {
   socket.on('init', d => {
     arenaW = d.arenaW; arenaH = d.arenaH;
     obstacles = d.obstacles; maxKills = d.maxKills;
+    myTeam = d.team ?? 0;
     resize();
     initFogCanvas();
   });
 
-  socket.on('state', d => { gs = d; });
+  socket.on('state', d => {
+    gs = d;
+    if (d.teamScores) teamScores = d.teamScores;
+  });
 
   socket.on('kill', d => {
-    killFeed.unshift({ text:`• ${d.killer} a tué ${d.victim}`, time:Date.now() });
+    const tc = TEAM_COLORS[d.killerTeam] ?? '#fff';
+    killFeed.unshift({ text:`• ${d.killer} a tué ${d.victim}`, time:Date.now(), teamCol: tc });
     if (killFeed.length > 6) killFeed.length = 6;
     if (d.killerId === myId) addXP(XP_PER_KILL);
   });
@@ -634,9 +645,11 @@ function drawObstacles() {
 }
 
 // Vérifie si un point est dans le cône de vision ET pas derrière un obstacle
-function isVisible(tx, ty) {
+function isVisible(tx, ty, targetTeam) {
   const me = myId && gs.players[myId];
   if (!me || !me.alive) return true;
+  // Coéquipiers toujours visibles
+  if (targetTeam !== undefined && targetTeam === (me.team ?? myTeam)) return true;
   const dx = tx - me.x, dy = ty - me.y;
   const dist = Math.hypot(dx, dy);
   if (dist < NEAR_DIST) return true;
@@ -687,7 +700,7 @@ function drawPlayers() {
     const p    = gs.players[id];
     const isMe = id === myId;
     if (!p.alive) continue;
-    if (!isMe && !isVisible(p.x, p.y)) continue;
+    if (!isMe && !isVisible(p.x, p.y, p.team)) continue;
 
     const ch   = CMAP[p.characterId] || CMAP.classic;
     const col  = ch.rb ? rbColor()    : ch.color;
@@ -695,6 +708,16 @@ function drawPlayers() {
 
     ctx.save();
     ctx.translate(p.x, p.y);
+
+    // Anneau couleur équipe
+    const teamCol = TEAM_COLORS[p.team] ?? '#fff';
+    const isTeammate = !isMe && (p.team === (gs.players[myId]?.team ?? myTeam));
+    ctx.strokeStyle = teamCol;
+    ctx.lineWidth = isMe ? 4 : 3;
+    ctx.shadowColor = teamCol;
+    ctx.shadowBlur = isTeammate ? 18 : (isMe ? 0 : 8);
+    ctx.beginPath(); ctx.arc(0, 0, 22, 0, Math.PI*2); ctx.stroke();
+    ctx.shadowBlur = 0;
 
     if (isMe) { ctx.shadowColor = glow; ctx.shadowBlur = 24; }
     ctx.fillStyle = col;
@@ -732,25 +755,60 @@ function drawPlayers() {
 function drawHUD() {
   const me = myId ? gs.players[myId] : null;
 
-  // scoreboard
-  const sorted = Object.values(gs.players).sort((a,b) => b.score - a.score);
-  const sbX = arenaW - 230, sbY = 14;
+  // ── Banner scores équipes (top center) ──
+  const ts0 = teamScores[0], ts1 = teamScores[1];
+  const bx = arenaW/2, by = 14;
+  ctx.save();
+  ctx.fillStyle = 'rgba(0,0,0,.75)';
+  ctx.fillRect(bx - 130, by - 2, 260, 38);
+  // Rouge
+  ctx.font = 'bold 24px Segoe UI'; ctx.textAlign = 'right';
+  ctx.fillStyle = TEAM_COLORS[0]; ctx.shadowColor = TEAM_COLORS[0]; ctx.shadowBlur = 12;
+  ctx.fillText(ts0, bx - 26, by + 26);
+  ctx.shadowBlur = 0;
+  // VS
+  ctx.font = 'bold 12px Segoe UI'; ctx.textAlign = 'center'; ctx.fillStyle = '#555';
+  ctx.fillText('VS', bx, by + 14);
+  ctx.font = '9px Segoe UI'; ctx.fillStyle = '#444';
+  ctx.fillText(`objectif ${maxKills}`, bx, by + 28);
+  // Bleu
+  ctx.font = 'bold 24px Segoe UI'; ctx.textAlign = 'left';
+  ctx.fillStyle = TEAM_COLORS[1]; ctx.shadowColor = TEAM_COLORS[1]; ctx.shadowBlur = 12;
+  ctx.fillText(ts1, bx + 26, by + 26);
+  ctx.shadowBlur = 0;
+  // Nom de ta team (petit)
+  ctx.font = 'bold 9px Segoe UI'; ctx.textAlign = 'center'; ctx.fillStyle = TEAM_COLORS[myTeam];
+  ctx.fillText(`TON ÉQUIPE : ${TEAM_NAMES[myTeam].toUpperCase()}`, bx, by + 44);
+  ctx.restore();
+
+  // ── Scoreboard par équipe (haut droit) ──
+  const players0 = Object.values(gs.players).filter(p => p.team === 0).sort((a,b) => b.score - a.score);
+  const players1 = Object.values(gs.players).filter(p => p.team === 1).sort((a,b) => b.score - a.score);
+  const sbX = arenaW - 230, sbY = 60;
+  const sbH = 28 + (players0.length + players1.length) * 24 + 32;
   ctx.fillStyle = 'rgba(0,0,0,.7)';
-  ctx.fillRect(sbX-10, sbY-4, 224, 32 + sorted.length*30);
-  ctx.font = 'bold 11px Segoe UI'; ctx.textAlign = 'left'; ctx.fillStyle = '#666';
-  ctx.fillText(`SCORES — objectif ${maxKills} kills`, sbX, sbY+10);
-  sorted.forEach((p, i) => {
-    const y    = sbY + 34 + i*30;
-    const isMe = p.id === myId;
-    const ch   = CMAP[p.characterId] || CMAP.classic;
-    const col  = ch.rb ? rbColor() : ch.color;
-    ctx.fillStyle = col; ctx.beginPath(); ctx.arc(sbX+7,y,7,0,Math.PI*2); ctx.fill();
-    ctx.fillStyle = isMe?'#fff':'#aaa';
-    ctx.font = isMe?'bold 14px Segoe UI':'13px Segoe UI'; ctx.textAlign = 'left';
-    ctx.fillText(p.name, sbX+20, y+5);
-    ctx.font = 'bold 16px Segoe UI'; ctx.textAlign = 'right'; ctx.fillStyle = '#fff';
-    ctx.fillText(p.score, sbX+210, y+5);
-  });
+  ctx.fillRect(sbX-10, sbY-4, 224, sbH);
+
+  let row = sbY + 12;
+  for (const [ti, team] of [[0, players0],[1, players1]]) {
+    ctx.font = 'bold 10px Segoe UI'; ctx.textAlign = 'left';
+    ctx.fillStyle = TEAM_COLORS[ti];
+    ctx.fillText(`▶ ÉQUIPE ${TEAM_NAMES[ti].toUpperCase()}`, sbX, row);
+    row += 18;
+    for (const p of team) {
+      const isMe = p.id === myId;
+      const ch   = CMAP[p.characterId] || CMAP.classic;
+      const col  = ch.rb ? rbColor() : ch.color;
+      ctx.fillStyle = col; ctx.beginPath(); ctx.arc(sbX+6, row-5, 5, 0, Math.PI*2); ctx.fill();
+      ctx.fillStyle = isMe ? '#fff' : '#aaa';
+      ctx.font = isMe ? 'bold 13px Segoe UI' : '12px Segoe UI'; ctx.textAlign = 'left';
+      ctx.fillText(p.name, sbX+16, row);
+      ctx.font = 'bold 14px Segoe UI'; ctx.textAlign = 'right'; ctx.fillStyle = '#fff';
+      ctx.fillText(p.score, sbX+210, row);
+      row += 24;
+    }
+    if (ti === 0) { ctx.fillStyle = '#1a2030'; ctx.fillRect(sbX, row, 214, 1); row += 10; }
+  }
 
   // health bar
   if (me && me.alive) {
@@ -807,10 +865,15 @@ function drawHUD() {
   killFeed.forEach((k, i) => {
     const alpha = Math.min(1, (5000 - (now - k.time)) / 400);
     ctx.fillStyle = `rgba(0,0,0,${.65*alpha})`;
-    ctx.fillRect(10, 12 + i*28, 285, 22);
-    ctx.fillStyle = k.pu ? `rgba(243,156,18,${alpha})` : `rgba(255,255,255,${alpha})`;
+    ctx.fillRect(10, 58 + i*28, 285, 22);
+    if (k.teamCol) {
+      const [r,g,b] = k.teamCol.match(/\w\w/g).map(h => parseInt(h,16));
+      ctx.fillStyle = `rgba(${r},${g},${b},${alpha})`;
+    } else {
+      ctx.fillStyle = k.pu ? `rgba(243,156,18,${alpha})` : `rgba(255,255,255,${alpha})`;
+    }
     ctx.font = '13px Segoe UI'; ctx.textAlign = 'left';
-    ctx.fillText(k.text, 16, 28 + i*28);
+    ctx.fillText(k.text, 16, 74 + i*28);
   });
 }
 
@@ -925,21 +988,26 @@ function pickRPS(choice) {
 function drawGameOver(w) {
   ctx.fillStyle = 'rgba(0,0,0,.82)'; ctx.fillRect(0,0,arenaW,arenaH);
   ctx.textAlign = 'center';
-  ctx.font = 'bold 70px Segoe UI'; ctx.fillStyle = '#f39c12';
-  ctx.shadowColor = '#f39c12'; ctx.shadowBlur = 30;
-  ctx.fillText('VICTOIRE !', arenaW/2, arenaH/2-60);
+  const wCol = w.color || '#f39c12';
+  ctx.font = 'bold 70px Segoe UI';
+  ctx.fillStyle = wCol; ctx.shadowColor = wCol; ctx.shadowBlur = 40;
+  ctx.fillText('VICTOIRE !', arenaW/2, arenaH/2-70);
   ctx.shadowBlur = 0;
-  const winner = gs.players[w.id];
-  const wch    = winner ? (CMAP[winner.characterId] || CMAP.classic) : CMAP.classic;
-  ctx.font = 'bold 40px Segoe UI';
-  ctx.fillStyle = wch.rb ? rbColor() : wch.color;
-  ctx.fillText(w.name, arenaW/2, arenaH/2+10);
-  ctx.font = '20px Segoe UI'; ctx.fillStyle = '#888';
-  ctx.fillText(`${w.score} kills  —  Prochaine partie dans 5s…`, arenaW/2, arenaH/2+58);
-  if (w.id === myId) {
-    ctx.font = 'bold 26px Segoe UI'; ctx.fillStyle = '#2ecc71';
-    ctx.fillText("C'est toi ! GG !", arenaW/2, arenaH/2-14);
-  }
+
+  // Nom de l'équipe gagnante
+  ctx.font = 'bold 52px Segoe UI';
+  ctx.fillStyle = wCol; ctx.shadowColor = wCol; ctx.shadowBlur = 20;
+  ctx.fillText(`ÉQUIPE ${(w.name || '?').toUpperCase()}`, arenaW/2, arenaH/2+4);
+  ctx.shadowBlur = 0;
+
+  // Est-ce ta team ?
+  const iWon = (w.team === myTeam);
+  ctx.font = 'bold 26px Segoe UI';
+  ctx.fillStyle = iWon ? '#2ecc71' : '#e74c3c';
+  ctx.fillText(iWon ? "C'est ton équipe ! GG !" : 'Bien essayé…', arenaW/2, arenaH/2+52);
+
+  ctx.font = '18px Segoe UI'; ctx.fillStyle = '#555';
+  ctx.fillText('Prochaine partie dans 5s…', arenaW/2, arenaH/2+84);
 }
 </script>
 </body>
