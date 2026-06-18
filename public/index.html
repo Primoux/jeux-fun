@@ -221,7 +221,7 @@ canvas { display:block; cursor:crosshair; }
   </div>
   <div style="display:flex;align-items:center;justify-content:space-between;width:100%;max-width:940px">
     <div class="hint">
-      <b>WASD</b> / Flèches → Bouger &nbsp;|&nbsp; <b>Souris</b> → Viser &nbsp;|&nbsp; <b>Clic</b> → Tirer en rafale
+      <b>WASD</b> / Flèches → Bouger &nbsp;|&nbsp; <b>Souris</b> → Viser &nbsp;|&nbsp; <b>Clic G</b> → Tirer &nbsp;|&nbsp; <b>Clic D</b> → Grenade (6s)
     </div>
     <button id="pnBtn" onclick="document.getElementById('pnOverlay').classList.add('on')">PATCH NOTES</button>
   </div>
@@ -258,22 +258,38 @@ canvas { display:block; cursor:crosshair; }
 <script>
 // ── Character definitions ───────────────────────────────────────────────────
 const CHARS = [
-  { id:'classic', name:'Classique',   req:0,  color:'#e74c3c', glow:'#e74c3c', gFill:'#2c2c2c', gAcc:'#555',    bCol:'#ff6b6b', desc:'Toujours prêt'  },
-  { id:'shadow',  name:'Shadow',      req:3,  color:'#7d3c98', glow:'#9b59b6', gFill:'#1a0a2e', gAcc:'#6c3483', bCol:'#c39bd3', desc:'Furtif'         },
-  { id:'blaze',   name:'Blaze',       req:7,  color:'#e67e22', glow:'#f39c12', gFill:'#7b241c', gAcc:'#e74c3c', bCol:'#f0b27a', desc:'Pur feu'        },
-  { id:'frost',   name:'Frost',       req:12, color:'#2980b9', glow:'#5dade2', gFill:'#1a5276', gAcc:'#3498db', bCol:'#aed6f1', desc:'Sang froid'     },
-  { id:'neon',    name:'Neon',        req:18, color:'#e91e63', glow:'#f06292', gFill:'#880e4f', gAcc:'#ad1457', bCol:'#f48fb1', desc:'Flamboyant'     },
-  { id:'toxic',   name:'Toxic',       req:25, color:'#27ae60', glow:'#2ecc71', gFill:'#145a32', gAcc:'#1e8449', bCol:'#82e0aa', desc:'Radioactif'     },
-  { id:'gold',    name:'Or',          req:35, color:'#f39c12', glow:'#f1c40f', gFill:'#7d6608', gAcc:'#d4ac0d', bCol:'#fad7a0', desc:'Légendaire'     },
-  { id:'trump',   name:'Trump',        req:0,  color:'#ff7518', glow:'#ffd700', gFill:'#c97d00', gAcc:'#ffd700', bCol:'#ffd700', desc:'Make Kills Great Again' },
-  { id:'rainbow', name:'Arc-en-ciel', req:50, color:'#ffffff', glow:'#fff',    gFill:'#111',    gAcc:'#555',    bCol:null,      desc:'Ultime', rb:true },
+  { id:'classic', name:'Classique',   req:0,  color:'#e74c3c', glow:'#e74c3c', gFill:'#2c2c2c', gAcc:'#555',    bCol:'#ff6b6b', desc:'Pas de stat spéciale'  },
+  { id:'shadow',  name:'Shadow',      req:3,  color:'#7d3c98', glow:'#9b59b6', gFill:'#1a0a2e', gAcc:'#6c3483', bCol:'#c39bd3', desc:'Vitesse +28%'           },
+  { id:'blaze',   name:'Blaze',       req:7,  color:'#e67e22', glow:'#f39c12', gFill:'#7b241c', gAcc:'#e74c3c', bCol:'#f0b27a', desc:'Dégâts +22%'            },
+  { id:'frost',   name:'Frost',       req:12, color:'#2980b9', glow:'#5dade2', gFill:'#1a5276', gAcc:'#3498db', bCol:'#aed6f1', desc:'Balles ralentissantes'  },
+  { id:'neon',    name:'Neon',        req:18, color:'#e91e63', glow:'#f06292', gFill:'#880e4f', gAcc:'#ad1457', bCol:'#f48fb1', desc:'Cadence +32%'           },
+  { id:'toxic',   name:'Toxic',       req:25, color:'#27ae60', glow:'#2ecc71', gFill:'#145a32', gAcc:'#1e8449', bCol:'#82e0aa', desc:'Balles empoisonnées'    },
+  { id:'gold',    name:'Or',          req:35, color:'#f39c12', glow:'#f1c40f', gFill:'#7d6608', gAcc:'#d4ac0d', bCol:'#fad7a0', desc:'Armure 22%'             },
+  { id:'trump',   name:'Trump',       req:0,  color:'#ff7518', glow:'#ffd700', gFill:'#c97d00', gAcc:'#ffd700', bCol:'#ffd700', desc:'Make Kills Great Again' },
+  { id:'rainbow', name:'Arc-en-ciel', req:50, color:'#ffffff', glow:'#fff',    gFill:'#111',    gAcc:'#555',    bCol:null,      desc:'Vitesse+Dégâts +10%', rb:true },
 ];
 const CMAP = Object.fromEntries(CHARS.map(c => [c.id, c]));
 
 // ── Patch Notes ──────────────────────────────────────────────────────────────
 const PATCH_NOTES = [
   {
-    ver: 'v0.7', date: '18 juin 2026', isNew: true,
+    ver: 'v0.8', date: '19 juin 2026', isNew: true,
+    changes: [
+      { text: 'Grenade au clic droit — cooldown 6s, fusible 2.2s, AoE 130px', hl: true },
+      { text: 'Bounce sur les murs de l\'arène, explose au contact des obstacles' },
+      { text: 'Indicateur cooldown grenade en bas à gauche (💣)' },
+      { text: 'Stats passives par personnage', hl: true },
+      { text: '<b>Shadow</b> — Vitesse +28%' },
+      { text: '<b>Blaze</b> — Dégâts +22%' },
+      { text: '<b>Frost</b> — Balles ralentissent 2.2s (anneau bleu sur la cible)' },
+      { text: '<b>Neon</b> — Cadence de tir +32%' },
+      { text: '<b>Toxic</b> — Balles empoisonnent 9hp/s pendant 3s (anneau vert)' },
+      { text: '<b>Gold</b> — Armure, réduit les dégâts reçus de 22%' },
+      { text: '<b>Arc-en-ciel</b> — Vitesse +10%, Dégâts +10%' },
+    ],
+  },
+  {
+    ver: 'v0.7', date: '18 juin 2026', isNew: false,
     changes: [
       { text: 'Particules de mort à l\'élimination', hl: true },
       { text: 'Flash central + 28 éclats dans la couleur du personnage tué' },
@@ -525,6 +541,11 @@ let rpsActive    = null;
 let rpsCountdown = null;
 const RPS_CLIENT = ['rock','paper','scissors'];
 
+const GRENADE_BLAST_R  = 130;
+const GRENADE_FUSE_MS  = 2200;
+const GRENADE_COOLDOWN = 6000;
+let lastGrenadeTime = 0;
+
 let fogCanvas = null;
 let fogCtx    = null;
 const FOV_HALF  = (65 / 180) * Math.PI; // 65° demi-angle = 130° de cône total
@@ -663,6 +684,20 @@ function connect(name) {
 
   socket.on('reset', () => { killFeed = []; });
 
+  socket.on('explosion', d => {
+    // Onde de choc
+    particles.push({ x:d.x, y:d.y, vx:0, vy:0, color:'#f39c12', size:d.r, alpha:0.9, life:0, maxLife:0.35, flash:true });
+    particles.push({ x:d.x, y:d.y, vx:0, vy:0, color:'#e74c3c', size:d.r*0.6, alpha:0.7, life:0, maxLife:0.25, flash:true });
+    // Éclats
+    for (let i = 0; i < 40; i++) {
+      const angle = Math.random() * Math.PI * 2;
+      const speed = 120 + Math.random() * 280;
+      particles.push({ x:d.x, y:d.y, vx:Math.cos(angle)*speed, vy:Math.sin(angle)*speed,
+        color: Math.random()<0.5 ? '#f39c12' : '#e74c3c',
+        size: 3 + Math.random() * 6, alpha:1, life:0, maxLife: 0.5 + Math.random()*0.4 });
+    }
+  });
+
   socket.on('rps_started', d => {
     killFeed.unshift({ text:`⚔️ RPS : ${d.killer} vs ${d.victim} !`, time:Date.now(), pu:true });
     if (killFeed.length > 6) killFeed.length = 6;
@@ -753,7 +788,16 @@ canvas.addEventListener('mousemove', e => {
 });
 canvas.addEventListener('mousedown',  e => { if (e.button===0) shooting = true; });
 canvas.addEventListener('mouseup',    e => { if (e.button===0) shooting = false; });
-canvas.addEventListener('contextmenu', e => e.preventDefault());
+canvas.addEventListener('contextmenu', e => {
+  e.preventDefault();
+  if (socket && gs && myId && gs.players[myId]?.alive) {
+    const now = Date.now();
+    if (now - lastGrenadeTime >= GRENADE_COOLDOWN) {
+      lastGrenadeTime = now;
+      socket.emit('grenade', { angle: mouseAngle });
+    }
+  }
+});
 
 function inputLoop() {
   setInterval(() => {
@@ -832,6 +876,28 @@ function drawParticles() {
   ctx.restore();
 }
 
+function drawGrenades() {
+  if (!gs || !gs.grenades) return;
+  const now = Date.now();
+  for (const g of gs.grenades) {
+    const fuse   = Math.max(0, g.explodeAt - now) / GRENADE_FUSE_MS;
+    const pulse  = 0.5 + 0.5 * Math.sin(now / (80 + fuse * 120));
+    const isOwn  = g.ownerId === myId;
+    const col    = isOwn ? '#f39c12' : '#e74c3c';
+    ctx.save();
+    ctx.shadowColor = col; ctx.shadowBlur = 12 + pulse * 10;
+    ctx.fillStyle = '#1a1a1a'; ctx.strokeStyle = col; ctx.lineWidth = 2;
+    ctx.beginPath(); ctx.arc(g.x, g.y, 9, 0, Math.PI * 2);
+    ctx.fill(); ctx.stroke();
+    // Mèche
+    ctx.strokeStyle = '#f39c12'; ctx.lineWidth = 1.5; ctx.globalAlpha = 0.8 + pulse * 0.2;
+    ctx.beginPath(); ctx.arc(g.x, g.y, 6, 0, Math.PI * 2 * (1 - fuse));
+    ctx.stroke();
+    ctx.shadowBlur = 0; ctx.globalAlpha = 1;
+    ctx.restore();
+  }
+}
+
 // ── Render ───────────────────────────────────────────────────────────────────
 function render(now) {
   requestAnimationFrame(render);
@@ -857,6 +923,7 @@ function render(now) {
   drawFog();
   drawParticles();
   drawPowerups();
+  drawGrenades();
   drawHUD();
   if (gs.gameOver && gs.winner) drawGameOver(gs.winner);
 }
@@ -962,7 +1029,7 @@ function drawPlayers() {
     ctx.translate(p.x, p.y);
 
     // Anneau couleur équipe
-    const teamCol = TEAM_COLORS[p.team] ?? '#fff';
+    const teamCol    = TEAM_COLORS[p.team] ?? '#fff';
     const isTeammate = !isMe && (p.team === (gs.players[myId]?.team ?? myTeam));
     ctx.strokeStyle = teamCol;
     ctx.lineWidth = isMe ? 4 : 3;
@@ -970,6 +1037,23 @@ function drawPlayers() {
     ctx.shadowBlur = isTeammate ? 18 : (isMe ? 0 : 8);
     ctx.beginPath(); ctx.arc(0, 0, 22, 0, Math.PI*2); ctx.stroke();
     ctx.shadowBlur = 0;
+
+    // Debuff visuels (anneau externe)
+    const now2 = Date.now();
+    if (p.poisonUntil > now2) {
+      const pulse = 0.55 + 0.45 * Math.sin(now2 / 160);
+      ctx.strokeStyle = '#27ae60'; ctx.lineWidth = 2.5; ctx.globalAlpha = pulse;
+      ctx.shadowColor = '#27ae60'; ctx.shadowBlur = 14;
+      ctx.beginPath(); ctx.arc(0, 0, 27, 0, Math.PI*2); ctx.stroke();
+      ctx.globalAlpha = 1; ctx.shadowBlur = 0;
+    }
+    if (p.slowUntil > now2) {
+      const pulse = 0.55 + 0.45 * Math.sin(now2 / 220);
+      ctx.strokeStyle = '#5dade2'; ctx.lineWidth = 2.5; ctx.globalAlpha = pulse;
+      ctx.shadowColor = '#5dade2'; ctx.shadowBlur = 14;
+      ctx.beginPath(); ctx.arc(0, 0, 27, 0, Math.PI*2); ctx.stroke();
+      ctx.globalAlpha = 1; ctx.shadowBlur = 0;
+    }
 
     if (isMe) { ctx.shadowColor = glow; ctx.shadowBlur = 24; }
     ctx.fillStyle = col;
@@ -1101,6 +1185,26 @@ function drawHUD() {
 
   // active buffs (bottom-left)
   if (me && me.buffs) drawBuffs(me);
+
+  // Grenade cooldown
+  if (me && me.alive) {
+    const gbx = 14, gby = arenaH - 144;
+    const cdn = Date.now() - lastGrenadeTime;
+    const rdy = cdn >= GRENADE_COOLDOWN;
+    const pct = Math.min(1, cdn / GRENADE_COOLDOWN);
+    ctx.fillStyle = 'rgba(0,0,0,.8)'; ctx.fillRect(gbx, gby, 52, 52);
+    ctx.fillStyle = rdy ? '#f39c1244' : '#22222244';
+    ctx.fillRect(gbx, gby + 52*(1-pct), 52, 52*pct);
+    ctx.strokeStyle = rdy ? '#f39c12' : '#444'; ctx.lineWidth = 2;
+    ctx.strokeRect(gbx, gby, 52, 52);
+    ctx.font = 'bold 26px Segoe UI'; ctx.textAlign = 'center';
+    ctx.fillStyle = rdy ? '#fff' : '#666';
+    ctx.fillText('💣', gbx+26, gby+34);
+    ctx.font = 'bold 8px Segoe UI'; ctx.fillStyle = rdy ? '#f39c12' : '#555';
+    ctx.fillText(rdy ? 'PRÊT' : `${((GRENADE_COOLDOWN-cdn)/1000).toFixed(1)}s`, gbx+26, gby+48);
+    ctx.font = 'bold 11px Segoe UI'; ctx.fillStyle = '#777';
+    ctx.fillText('CLIC D.', gbx+26, gby-5);
+  }
 
   // respawn overlay
   if (me && !me.alive) {

@@ -30,6 +30,24 @@ const BUFF_DURATION  = 8000;
 const TEAM_NAMES  = ['Rouge', 'Bleu'];
 const TEAM_COLORS = ['#e74c3c', '#3498db'];
 
+const GRENADE_SPEED    = 320;
+const GRENADE_FUSE_MS  = 2200;
+const GRENADE_DMG      = 85;
+const GRENADE_BLAST_R  = 130;
+const GRENADE_COOLDOWN = 6000;
+const GRENADE_RADIUS   = 10;
+
+// Stats passifs par personnage
+const CHAR_STATS = {
+  shadow:  { speedMult: 1.28 },
+  blaze:   { damageMult: 1.22 },
+  frost:   { slowOnHit: 2200 },
+  neon:    { fireRateMult: 0.68 },
+  toxic:   { poisonDPS: 9, poisonDur: 3000 },
+  gold:    { armor: 0.22 },
+  rainbow: { speedMult: 1.10, damageMult: 1.10 },
+};
+
 const CHAR_COLORS = {
   classic:'#e74c3c', shadow:'#7d3c98', blaze:'#e67e22',
   frost:'#2980b9',   neon:'#e91e63',   toxic:'#27ae60',
@@ -121,6 +139,8 @@ let bullets  = [];
 let bulletId = 0;
 let powerups  = [];
 let powerupId = 0;
+let grenades  = [];
+let grenadeId = 0;
 let gameOver      = false;
 let winner        = null;
 let teamScores    = [0, 0];
@@ -161,6 +181,38 @@ function randomPowerupPos() {
     if (ok) return { x, y };
   }
   return null;
+}
+
+function awardKill(killerId, killerName, victimName) {
+  const shooter = players[killerId];
+  if (!shooter) return;
+  shooter.score++;
+  teamScores[shooter.team]++;
+  io.emit('kill', { killerId, killer: killerName, victim: victimName, killerTeam: shooter.team });
+  if (teamScores[shooter.team] >= MAX_KILLS) {
+    gameOver = true;
+    winner   = { team: shooter.team, name: TEAM_NAMES[shooter.team], color: TEAM_COLORS[shooter.team] };
+    setTimeout(() => { resetGame(); io.emit('reset'); }, 5000);
+  }
+}
+
+function explodeGrenade(g, now) {
+  io.emit('explosion', { x: g.x, y: g.y, r: GRENADE_BLAST_R });
+  for (const id in players) {
+    const p = players[id];
+    if (!p.alive) continue;
+    if (p.team === g.team) continue;
+    const dx = p.x - g.x, dy = p.y - g.y;
+    const dist = Math.sqrt(dx * dx + dy * dy);
+    if (dist < GRENADE_BLAST_R + PLAYER_RADIUS) {
+      const factor = 1 - dist / (GRENADE_BLAST_R + PLAYER_RADIUS);
+      p.health -= Math.round(GRENADE_DMG * factor);
+      if (p.health <= 0) {
+        p.health = 0; p.alive = false; p.respawnAt = now + RESPAWN_MS;
+        awardKill(g.ownerId, (players[g.ownerId] && players[g.ownerId].name) || '?', p.name);
+      }
+    }
+  }
 }
 
 const RPS_CHOICES = ['rock', 'paper', 'scissors'];
@@ -207,12 +259,15 @@ function resetGame() {
   teamScores = [0, 0];
   bullets    = [];
   powerups   = [];
+  grenades   = [];
   for (const id in players) {
     const p  = players[id];
     const sp = safeSpawn(id, p.team);
     Object.assign(p, {
       score: 0, health: 100, alive: true, x: sp.x, y: sp.y,
       buffs: { speed: 0, rapidfire: 0, damage: 0 },
+      poisonUntil: 0, poisonDPS: 0, poisonerId: null,
+      slowUntil: 0,
     });
   }
   io.emit('mapChange', { obstacles: OBSTACLES, mapName: MAPS[mapIdx].name, mapIdx });
@@ -239,11 +294,24 @@ function tick() {
       continue;
     }
 
+    // Poison tick
+    if (p.poisonUntil > now) {
+      p.health -= p.poisonDPS * dt;
+      if (p.health <= 0) {
+        p.health = 0; p.alive = false; p.respawnAt = now + RESPAWN_MS;
+        if (p.poisonerId) awardKill(p.poisonerId, (players[p.poisonerId] && players[p.poisonerId].name) || '?', p.name);
+        continue;
+      }
+    }
+
+    const cs  = CHAR_STATS[p.characterId] || {};
     const inp = p.input;
     let vx = (inp.right ? 1 : 0) - (inp.left ? 1 : 0);
     let vy = (inp.down  ? 1 : 0) - (inp.up   ? 1 : 0);
     if (vx !== 0 && vy !== 0) { vx *= 0.7071; vy *= 0.7071; }
-    const spMult = p.buffs.speed > now ? 1.65 : 1;
+    const spMult = (p.buffs.speed > now ? 1.65 : 1)
+                 * (cs.speedMult || 1)
+                 * (p.slowUntil > now ? 0.42 : 1);
     vx *= PLAYER_SPEED * spMult; vy *= PLAYER_SPEED * spMult;
 
     p.x += vx * dt;
@@ -266,11 +334,11 @@ function tick() {
       }
     }
 
-    const fireRate = p.buffs.rapidfire > now ? FIRE_RATE_MS * 0.3 : FIRE_RATE_MS;
+    const fireRate = (p.buffs.rapidfire > now ? FIRE_RATE_MS * 0.3 : FIRE_RATE_MS) * (cs.fireRateMult || 1);
     if (inp.shooting && now - p.lastShot >= fireRate) {
       p.lastShot = now;
       const a   = p.angle;
-      const dmg = p.buffs.damage > now ? Math.round(BULLET_DMG * 1.9) : BULLET_DMG;
+      const dmg = Math.round((p.buffs.damage > now ? BULLET_DMG * 1.9 : BULLET_DMG) * (cs.damageMult || 1));
       bullets.push({
         id: bulletId++, ownerId: id, dmg,
         x: p.x + Math.cos(a) * (PLAYER_RADIUS + 6),
@@ -326,13 +394,23 @@ function tick() {
       if (owner && owner.team === p.team) continue;
       const dx = p.x - b.x, dy = p.y - b.y;
       if (dx * dx + dy * dy < (PLAYER_RADIUS + BULLET_RADIUS) ** 2) {
-        p.health -= b.dmg;
+        const shooter    = players[b.ownerId];
+        const shooterCS  = CHAR_STATS[shooter && shooter.characterId] || {};
+        const targetCS   = CHAR_STATS[p.characterId] || {};
+        const actualDmg  = Math.round(b.dmg * (1 - (targetCS.armor || 0)));
+        p.health -= actualDmg;
+        // Débuffs de personnage
+        if (shooterCS.slowOnHit)  { p.slowUntil = now + shooterCS.slowOnHit; }
+        if (shooterCS.poisonDPS)  {
+          p.poisonUntil = now + shooterCS.poisonDur;
+          p.poisonDPS   = shooterCS.poisonDPS;
+          p.poisonerId  = b.ownerId;
+        }
         hit = true;
         if (p.health <= 0) {
           p.health    = 0;
           p.alive     = false;
           p.respawnAt = now + RESPAWN_MS;
-          const shooter = players[b.ownerId];
           if (shooter) {
             if (Math.random() < 0.05) {
               const cid = rpsId++;
@@ -346,14 +424,7 @@ function tick() {
               io.emit('rps_started', { killer: shooter.name, victim: p.name });
               setTimeout(() => resolveRPS(cid), 6000);
             } else {
-              shooter.score++;
-              teamScores[shooter.team]++;
-              io.emit('kill', { killerId: b.ownerId, killer: shooter.name, victim: p.name, killerTeam: shooter.team });
-              if (teamScores[shooter.team] >= MAX_KILLS) {
-                gameOver = true;
-                winner   = { team: shooter.team, name: TEAM_NAMES[shooter.team], color: TEAM_COLORS[shooter.team] };
-                setTimeout(() => { resetGame(); io.emit('reset'); }, 5000);
-              }
+              awardKill(b.ownerId, shooter.name, p.name);
             }
           }
         }
@@ -364,15 +435,38 @@ function tick() {
   }
   bullets = alive;
 
+  // Grenades
+  const aliveGrenades = [];
+  for (const g of grenades) {
+    if (now >= g.explodeAt) { explodeGrenade(g, now); continue; }
+    g.x += g.vx * dt; g.y += g.vy * dt;
+    g.vx *= 0.97; g.vy *= 0.97;
+    // Rebond sur les murs de l'arène
+    if (g.x < GRENADE_RADIUS)         { g.x = GRENADE_RADIUS;         g.vx = Math.abs(g.vx) * 0.65; }
+    if (g.x > ARENA_W - GRENADE_RADIUS){ g.x = ARENA_W-GRENADE_RADIUS; g.vx = -Math.abs(g.vx) * 0.65; }
+    if (g.y < GRENADE_RADIUS)         { g.y = GRENADE_RADIUS;         g.vy = Math.abs(g.vy) * 0.65; }
+    if (g.y > ARENA_H - GRENADE_RADIUS){ g.y = ARENA_H-GRENADE_RADIUS; g.vy = -Math.abs(g.vy) * 0.65; }
+    // Explosion sur contact obstacle
+    let hitWall = false;
+    for (const o of OBSTACLES) {
+      if (circleRect(g.x, g.y, GRENADE_RADIUS, o.x, o.y, o.w, o.h)) { hitWall = true; break; }
+    }
+    if (hitWall) { explodeGrenade(g, now); continue; }
+    aliveGrenades.push(g);
+  }
+  grenades = aliveGrenades;
+
   io.emit('state', {
     players: Object.fromEntries(Object.entries(players).map(([id, p]) => [id, {
       id, name: p.name, x: p.x, y: p.y, angle: p.angle,
       health: p.health, alive: p.alive, score: p.score,
       color: p.color, characterId: p.characterId,
       respawnAt: p.respawnAt, buffs: p.buffs, team: p.team,
+      poisonUntil: p.poisonUntil, slowUntil: p.slowUntil,
     }])),
     bullets:  bullets.map(b  => ({ id: b.id, x: b.x, y: b.y, ownerId: b.ownerId })),
     powerups: powerups.map(pu => ({ id: pu.id, type: pu.type, x: pu.x, y: pu.y })),
+    grenades: grenades.map(g => ({ id: g.id, x: g.x, y: g.y, explodeAt: g.explodeAt, ownerId: g.ownerId })),
     gameOver, winner, teamScores,
   });
 }
@@ -403,8 +497,9 @@ io.on('connection', (socket) => {
     x: sp.x, y: sp.y, angle: 0,
     health: 100, alive: true, score: 0,
     color: CHAR_COLORS.classic, characterId: 'classic',
-    lastShot: 0, respawnAt: 0, team,
+    lastShot: 0, lastGrenade: 0, respawnAt: 0, team,
     buffs: { speed: 0, rapidfire: 0, damage: 0 },
+    poisonUntil: 0, poisonDPS: 0, poisonerId: null, slowUntil: 0,
     input: { up: false, down: false, left: false, right: false, shooting: false },
   };
 
@@ -437,6 +532,22 @@ io.on('connection', (socket) => {
     p.input.right    = !!data.right;
     p.input.shooting = !!data.shooting;
     if (typeof data.angle === 'number') p.angle = data.angle;
+  });
+
+  socket.on('grenade', (data) => {
+    const p = players[socket.id];
+    if (!p || !p.alive || gameOver) return;
+    if (Date.now() - p.lastGrenade < GRENADE_COOLDOWN) return;
+    p.lastGrenade = Date.now();
+    const angle = typeof data.angle === 'number' ? data.angle : 0;
+    grenades.push({
+      id: grenadeId++, ownerId: socket.id, team: p.team,
+      x: p.x + Math.cos(angle) * (PLAYER_RADIUS + 14),
+      y: p.y + Math.sin(angle) * (PLAYER_RADIUS + 14),
+      vx: Math.cos(angle) * GRENADE_SPEED,
+      vy: Math.sin(angle) * GRENADE_SPEED,
+      explodeAt: Date.now() + GRENADE_FUSE_MS,
+    });
   });
 
   socket.on('rps_pick', ({ cid, choice }) => {
