@@ -363,6 +363,8 @@ let arenaW    = 1200;
 let arenaH    = 700;
 let obstacles = [];
 let maxKills  = 15;
+let mapName   = 'Bunkers';
+let mapIdx    = 0;
 let scale     = 1;
 let socket    = null;
 let killFeed  = [];
@@ -476,8 +478,17 @@ function connect(name) {
     arenaW = d.arenaW; arenaH = d.arenaH;
     obstacles = d.obstacles; maxKills = d.maxKills;
     myTeam = d.team ?? 0;
+    mapName = d.mapName || 'Bunkers';
+    mapIdx  = d.mapIdx  || 0;
     resize();
     initFogCanvas();
+  });
+
+  socket.on('mapChange', d => {
+    obstacles = d.obstacles;
+    mapName   = d.mapName;
+    mapIdx    = d.mapIdx;
+    showToast(`🗺️ Prochaine map : ${d.mapName}`);
   });
 
   socket.on('state', d => {
@@ -776,9 +787,11 @@ function drawHUD() {
   ctx.fillStyle = TEAM_COLORS[1]; ctx.shadowColor = TEAM_COLORS[1]; ctx.shadowBlur = 12;
   ctx.fillText(ts1, bx + 26, by + 26);
   ctx.shadowBlur = 0;
-  // Nom de ta team (petit)
+  // Nom de ta team + nom de la map
   ctx.font = 'bold 9px Segoe UI'; ctx.textAlign = 'center'; ctx.fillStyle = TEAM_COLORS[myTeam];
-  ctx.fillText(`TON ÉQUIPE : ${TEAM_NAMES[myTeam].toUpperCase()}`, bx, by + 44);
+  ctx.fillText(`TON ÉQUIPE : ${TEAM_NAMES[myTeam].toUpperCase()}`, bx - 38, by + 44);
+  ctx.fillStyle = '#444';
+  ctx.fillText(`MAP : ${mapName.toUpperCase()}`, bx + 52, by + 44);
   ctx.restore();
 
   // ── Scoreboard par équipe (haut droit) ──
@@ -1007,7 +1020,9 @@ function drawGameOver(w) {
   ctx.fillText(iWon ? "C'est ton équipe ! GG !" : 'Bien essayé…', arenaW/2, arenaH/2+52);
 
   ctx.font = '18px Segoe UI'; ctx.fillStyle = '#555';
-  ctx.fillText('Prochaine partie dans 5s…', arenaW/2, arenaH/2+84);
+  const maps = ['Bunkers', 'Couloirs', 'Fort Central'];
+  const nextMap = maps[(mapIdx + 1) % maps.length];
+  ctx.fillText(`Prochaine partie dans 5s… — Map : ${nextMap}`, arenaW/2, arenaH/2+84);
 }
 </script>
 </body>

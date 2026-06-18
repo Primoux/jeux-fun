@@ -36,19 +36,67 @@ const CHAR_COLORS = {
   gold:'#f39c12',    rainbow:'#ffffff', trump:'#ff7518',
 };
 
-const OBSTACLES = [
-  { x: 140, y: 110, w: 110, h: 110 },
-  { x: 480, y: 110, w: 110, h: 110 },
-  { x: 830, y: 110, w: 110, h: 110 },
-  { x: 1060, y: 110, w: 110, h: 110 },
-  { x: 140, y: 480, w: 110, h: 110 },
-  { x: 480, y: 480, w: 110, h: 110 },
-  { x: 830, y: 480, w: 110, h: 110 },
-  { x: 1060, y: 480, w: 110, h: 110 },
-  { x: 310, y: 290, w: 130, h: 120 },
-  { x: 600, y: 270, w: 130, h: 160 },
-  { x: 890, y: 290, w: 130, h: 120 },
+const MAPS = [
+  {
+    name: 'Bunkers',
+    obstacles: [
+      { x: 140, y: 110, w: 110, h: 110 },
+      { x: 480, y: 110, w: 110, h: 110 },
+      { x: 830, y: 110, w: 110, h: 110 },
+      { x: 1060, y: 110, w: 110, h: 110 },
+      { x: 140, y: 480, w: 110, h: 110 },
+      { x: 480, y: 480, w: 110, h: 110 },
+      { x: 830, y: 480, w: 110, h: 110 },
+      { x: 1060, y: 480, w: 110, h: 110 },
+      { x: 310, y: 290, w: 130, h: 120 },
+      { x: 600, y: 270, w: 130, h: 160 },
+      { x: 890, y: 290, w: 130, h: 120 },
+    ],
+  },
+  {
+    name: 'Couloirs',
+    obstacles: [
+      // Deux murs verticaux avec décalage pour créer 3 couloirs
+      { x: 380, y:   0, w: 25, h: 240 },
+      { x: 380, y: 360, w: 25, h: 340 },
+      { x: 795, y: 110, w: 25, h: 250 },
+      { x: 795, y: 460, w: 25, h: 240 },
+      // Couvertures couloir central
+      { x: 530, y:  90, w: 140, h: 70 },
+      { x: 530, y: 540, w: 140, h: 70 },
+      { x: 560, y: 290, w: 80,  h: 120 },
+      // Couvertures couloir gauche
+      { x: 170, y: 240, w: 120, h: 70 },
+      { x: 170, y: 390, w: 120, h: 70 },
+      // Couvertures couloir droit
+      { x: 910, y: 240, w: 120, h: 70 },
+      { x: 910, y: 390, w: 120, h: 70 },
+    ],
+  },
+  {
+    name: 'Fort Central',
+    obstacles: [
+      // Enceinte centrale creuse (entrées sur les côtés)
+      { x: 450, y: 190, w: 300, h: 22 },
+      { x: 450, y: 488, w: 300, h: 22 },
+      { x: 450, y: 190, w: 22,  h: 140 },
+      { x: 450, y: 370, w: 22,  h: 140 },
+      { x: 728, y: 190, w: 22,  h: 140 },
+      { x: 728, y: 370, w: 22,  h: 140 },
+      // Couvertures par coin
+      { x: 160, y: 110, w: 130, h: 80 },
+      { x: 160, y: 510, w: 130, h: 80 },
+      { x: 910, y: 110, w: 130, h: 80 },
+      { x: 910, y: 510, w: 130, h: 80 },
+      // Couloir mid
+      { x: 260, y: 290, w: 80, h: 120 },
+      { x: 860, y: 290, w: 80, h: 120 },
+    ],
+  },
 ];
+
+let mapIdx    = 0;
+let OBSTACLES = MAPS[0].obstacles;
 
 const SPAWNS = [
   { x: 60,         y: 60         },
@@ -152,6 +200,8 @@ function resolveRPS(cid) {
 }
 
 function resetGame() {
+  mapIdx    = (mapIdx + 1) % MAPS.length;
+  OBSTACLES = MAPS[mapIdx].obstacles;
   gameOver   = false;
   winner     = null;
   teamScores = [0, 0];
@@ -165,6 +215,7 @@ function resetGame() {
       buffs: { speed: 0, rapidfire: 0, damage: 0 },
     });
   }
+  io.emit('mapChange', { obstacles: OBSTACLES, mapName: MAPS[mapIdx].name, mapIdx });
 }
 
 // ── Game loop ────────────────────────────────────────────────────────────────
@@ -360,6 +411,7 @@ io.on('connection', (socket) => {
   socket.emit('init', {
     id: socket.id, arenaW: ARENA_W, arenaH: ARENA_H,
     obstacles: OBSTACLES, maxKills: MAX_KILLS, team,
+    mapName: MAPS[mapIdx].name, mapIdx,
   });
 
   socket.on('setName', (name) => {
