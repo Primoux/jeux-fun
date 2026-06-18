@@ -273,7 +273,16 @@ const CMAP = Object.fromEntries(CHARS.map(c => [c.id, c]));
 // ── Patch Notes ──────────────────────────────────────────────────────────────
 const PATCH_NOTES = [
   {
-    ver: 'v0.6', date: '18 juin 2026', isNew: true,
+    ver: 'v0.7', date: '18 juin 2026', isNew: true,
+    changes: [
+      { text: 'Particules de mort à l\'élimination', hl: true },
+      { text: 'Flash central + 28 éclats dans la couleur du personnage tué' },
+      { text: 'Friction + fade exponentiel, toujours visibles par-dessus le fog' },
+      { text: 'Power-ups toujours visibles indépendamment du fog of war' },
+    ],
+  },
+  {
+    ver: 'v0.6', date: '18 juin 2026',
     changes: [
       { text: 'Vision fog partagée par équipe — tu vois ce que voit ton coéquipier', hl: true },
       { text: 'Patch Notes accessibles depuis le menu lobby' },
