@@ -365,6 +365,17 @@ let rpsActive    = null;
 let rpsCountdown = null;
 const RPS_CLIENT = ['rock','paper','scissors'];
 
+let fogCanvas = null;
+let fogCtx    = null;
+const FOG_RADIUS = 270;
+
+function initFogCanvas() {
+  fogCanvas = document.createElement('canvas');
+  fogCanvas.width  = arenaW;
+  fogCanvas.height = arenaH;
+  fogCtx = fogCanvas.getContext('2d');
+}
+
 const keys     = { up:false, down:false, left:false, right:false };
 let mouseAngle = 0;
 let shooting   = false;
@@ -402,6 +413,7 @@ function connect(name) {
     arenaW = d.arenaW; arenaH = d.arenaH;
     obstacles = d.obstacles; maxKills = d.maxKills;
     resize();
+    initFogCanvas();
   });
 
   socket.on('state', d => { gs = d; });
@@ -536,6 +548,7 @@ function render() {
   drawPowerups();
   drawBullets();
   drawPlayers();
+  drawFog();
   drawHUD();
   if (gs.gameOver && gs.winner) drawGameOver(gs.winner);
 }
@@ -747,6 +760,41 @@ function drawBuffs(me) {
     ctx.fillText(Math.ceil((expiry-now)/1000)+'s', bx+26, by-4);
     bx += 60;
   }
+}
+
+function drawFog() {
+  if (!fogCanvas || !myId || !gs) return;
+  const me = myId ? gs.players[myId] : null;
+
+  fogCtx.clearRect(0, 0, arenaW, arenaH);
+
+  if (!me || !me.alive) {
+    // Mort : brouillard léger pour indiquer la désorientation
+    fogCtx.fillStyle = 'rgba(0,0,0,0.38)';
+    fogCtx.fillRect(0, 0, arenaW, arenaH);
+    ctx.drawImage(fogCanvas, 0, 0);
+    return;
+  }
+
+  // Brouillard dense
+  fogCtx.fillStyle = 'rgba(0,0,0,0.91)';
+  fogCtx.fillRect(0, 0, arenaW, arenaH);
+
+  // Percer un cercle dégradé autour du joueur
+  fogCtx.globalCompositeOperation = 'destination-out';
+  const grad = fogCtx.createRadialGradient(
+    me.x, me.y, FOG_RADIUS * 0.68,
+    me.x, me.y, FOG_RADIUS
+  );
+  grad.addColorStop(0, 'rgba(0,0,0,1)');
+  grad.addColorStop(1, 'rgba(0,0,0,0)');
+  fogCtx.fillStyle = grad;
+  fogCtx.beginPath();
+  fogCtx.arc(me.x, me.y, FOG_RADIUS, 0, Math.PI * 2);
+  fogCtx.fill();
+  fogCtx.globalCompositeOperation = 'source-over';
+
+  ctx.drawImage(fogCanvas, 0, 0);
 }
 
 function pickRPS(choice) {

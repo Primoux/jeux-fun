@@ -267,7 +267,7 @@ function tick() {
           p.respawnAt = now + RESPAWN_MS;
           const shooter = players[b.ownerId];
           if (shooter) {
-            if (Math.random() < 0.20) {
+            if (Math.random() < 0.05) {
               const cid = rpsId++;
               rpsChallenges[cid] = {
                 id: cid, resolved: false,
