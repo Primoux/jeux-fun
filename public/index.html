@@ -633,10 +633,25 @@ function drawObstacles() {
   }
 }
 
+// Vérifie si un point est dans le cône de vision ET pas derrière un obstacle
+function isVisible(tx, ty) {
+  const me = myId && gs.players[myId];
+  if (!me || !me.alive) return true;
+  const dx = tx - me.x, dy = ty - me.y;
+  const dist = Math.hypot(dx, dy);
+  if (dist < NEAR_DIST) return true;
+  if (dist > FOV_DIST + 30) return false;
+  const angle = Math.atan2(dy, dx);
+  if (Math.abs(angleDiff(angle, mouseAngle)) > FOV_HALF + 0.04) return false;
+  // Raycasting : est-ce qu'un mur bloque avant le point cible ?
+  return castRay(me.x, me.y, angle) >= dist - 22;
+}
+
 function drawPowerups() {
   if (!gs.powerups || !gs.powerups.length) return;
   const t = Date.now() / 1000;
   for (const pu of gs.powerups) {
+    if (!isVisible(pu.x, pu.y)) continue;
     const col   = PU_COLORS[pu.type];
     const r     = 15 * (1 + 0.12 * Math.sin(t * 5));
     ctx.shadowColor = col; ctx.shadowBlur = 22;
@@ -672,6 +687,7 @@ function drawPlayers() {
     const p    = gs.players[id];
     const isMe = id === myId;
     if (!p.alive) continue;
+    if (!isMe && !isVisible(p.x, p.y)) continue;
 
     const ch   = CMAP[p.characterId] || CMAP.classic;
     const col  = ch.rb ? rbColor()    : ch.color;
