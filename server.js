@@ -48,7 +48,15 @@ const CHAR_STATS = {
   rainbow: { speedMult: 1.10, damageMult: 1.10 },
 };
 
-const CHAR_COLORS = {
+// ── Weapon system ───────────────────────────────────────────────────────────
+const WEAPONS = {
+  pistol:   { name: 'Pistolet',    dmg: 25,  fireRate: 200,  speed: 600,  ammo: 30,  type: 'semi' },
+  smg:      { name: 'SMG',         dmg: 16,  fireRate: 80,   speed: 550,  ammo: 35,  type: 'auto' },
+  shotgun:  { name: 'Shotgun',     dmg: 60,  fireRate: 600,  speed: 500,  ammo: 8,   type: 'burst', pellets: 8 },
+  rifle:    { name: 'Rifle',       dmg: 45,  fireRate: 300,  speed: 650,  ammo: 20,  type: 'semi' },
+  sniper:   { name: 'Sniper',      dmg: 90,  fireRate: 800,  speed: 700,  ammo: 5,   type: 'semi' },
+};
+const DEFAULT_WEAPON = 'pistol';const CHAR_COLORS = {
   classic:'#e74c3c', shadow:'#7d3c98', blaze:'#e67e22',
   frost:'#2980b9',   neon:'#e91e63',   toxic:'#27ae60',
   gold:'#f39c12',    rainbow:'#ffffff', trump:'#ff7518',
@@ -141,6 +149,8 @@ let powerups  = [];
 let powerupId = 0;
 let grenades  = [];
 let grenadeId = 0;
+let weapons   = [];
+let weaponId  = 0;
 let gameOver      = false;
 let winner        = null;
 let teamScores    = [0, 0];
@@ -335,18 +345,43 @@ function tick() {
     }
 
     const fireRate = (p.buffs.rapidfire > now ? FIRE_RATE_MS * 0.3 : FIRE_RATE_MS) * (cs.fireRateMult || 1);
-    if (inp.shooting && now - p.lastShot >= fireRate) {
+    if (inp.shooting && now - p.lastShot >= fireRate && p.ammo > 0) {
       p.lastShot = now;
       const a   = p.angle;
-      const dmg = Math.round((p.buffs.damage > now ? BULLET_DMG * 1.9 : BULLET_DMG) * (cs.damageMult || 1));
-      bullets.push({
-        id: bulletId++, ownerId: id, dmg,
-        x: p.x + Math.cos(a) * (PLAYER_RADIUS + 6),
-        y: p.y + Math.sin(a) * (PLAYER_RADIUS + 6),
-        vx: Math.cos(a) * BULLET_SPEED,
-        vy: Math.sin(a) * BULLET_SPEED,
-        born: now,
-      });
+      const weapon = WEAPONS[p.weapon];
+      const dmg = Math.round((p.buffs.damage > now ? weapon.dmg * 1.9 : weapon.dmg) * (cs.damageMult || 1));
+      const speed = weapon.speed;
+      
+      // Handle burst fire (shotgun)
+      if (weapon.pellets) {
+        for (let i = 0; i < weapon.pellets; i++) {
+          const spread = (Math.random() - 0.5) * 0.4;
+          bullets.push({
+            id: bulletId++, ownerId: id, dmg,
+            x: p.x + Math.cos(a) * (PLAYER_RADIUS + 6),
+            y: p.y + Math.sin(a) * (PLAYER_RADIUS + 6),
+            vx: Math.cos(a + spread) * speed,
+            vy: Math.sin(a + spread) * speed,
+            born: now,
+          });
+        }
+        p.ammo -= weapon.pellets;
+      } else {
+        bullets.push({
+          id: bulletId++, ownerId: id, dmg,
+          x: p.x + Math.cos(a) * (PLAYER_RADIUS + 6),
+          y: p.y + Math.sin(a) * (PLAYER_RADIUS + 6),
+          vx: Math.cos(a) * speed,
+          vy: Math.sin(a) * speed,
+          born: now,
+        });
+        p.ammo--;
+      }
+      
+      // Reload when out of ammo
+      if (p.ammo <= 0) {
+        p.ammo = weapon.ammo;
+      }
     }
   }
 
@@ -365,6 +400,23 @@ function tick() {
         }
         io.emit('powerup', { player: p.name, type: pu.type });
         powerups.splice(i, 1);
+        break;
+      }
+    }
+  }
+
+  // Weapon pickups
+  for (let i = weapons.length - 1; i >= 0; i--) {
+    const w = weapons[i];
+    for (const id in players) {
+      const p = players[id];
+      if (!p.alive) continue;
+      const dx = p.x - w.x, dy = p.y - w.y;
+      if (dx*dx + dy*dy < (PLAYER_RADIUS + POWERUP_RADIUS)**2) {
+        p.weapon = w.weapon;
+        p.ammo = WEAPONS[w.weapon].ammo;
+        io.emit('powerup', { player: p.name, type: 'weapon_' + w.weapon });
+        weapons.splice(i, 1);
         break;
       }
     }
@@ -463,9 +515,11 @@ function tick() {
       color: p.color, characterId: p.characterId,
       respawnAt: p.respawnAt, buffs: p.buffs, team: p.team,
       poisonUntil: p.poisonUntil, slowUntil: p.slowUntil,
+      weapon: p.weapon, ammo: p.ammo,
     }])),
     bullets:  bullets.map(b  => ({ id: b.id, x: b.x, y: b.y, ownerId: b.ownerId })),
     powerups: powerups.map(pu => ({ id: pu.id, type: pu.type, x: pu.x, y: pu.y })),
+    weapons:  weapons.map(w  => ({ id: w.id, weapon: w.weapon, x: w.x, y: w.y })),
     grenades: grenades.map(g => ({ id: g.id, x: g.x, y: g.y, explodeAt: g.explodeAt, ownerId: g.ownerId })),
     gameOver, winner, teamScores,
   });
@@ -484,6 +538,17 @@ setInterval(() => {
   }
 }, 4000);
 
+// Spawn des armes aléatoires
+setInterval(() => {
+  if (gameOver || weapons.length >= 8) return;
+  const pos = randomPowerupPos();
+  if (pos) {
+    const weaponList = Object.keys(WEAPONS);
+    const weapon = weaponList[Math.floor(Math.random() * weaponList.length)];
+    weapons.push({ id: weaponId++, weapon, x: pos.x, y: pos.y });
+  }
+}, 6000);
+
 // ── Sockets ──────────────────────────────────────────────────────────────────
 io.on('connection', (socket) => {
   // Auto-balance des équipes
@@ -501,6 +566,7 @@ io.on('connection', (socket) => {
     buffs: { speed: 0, rapidfire: 0, damage: 0 },
     poisonUntil: 0, poisonDPS: 0, poisonerId: null, slowUntil: 0,
     input: { up: false, down: false, left: false, right: false, shooting: false },
+    weapon: DEFAULT_WEAPON, ammo: WEAPONS[DEFAULT_WEAPON].ammo,
   };
 
   socket.emit('init', {
@@ -521,6 +587,13 @@ io.on('connection', (socket) => {
     if (!col) return;
     p.characterId = String(charId);
     p.color       = col;
+  });
+
+  socket.on('changeWeapon', (weapon) => {
+    const p = players[socket.id];
+    if (!p || !WEAPONS[weapon]) return;
+    p.weapon = weapon;
+    p.ammo = WEAPONS[weapon].ammo;
   });
 
   socket.on('input', (data) => {

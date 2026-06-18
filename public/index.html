@@ -678,7 +678,9 @@ function connect(name) {
 
   socket.on('powerup', d => {
     const n = { speed:'Vitesse', rapidfire:'Cadence rapide', damage:'Dégâts+', heal:'Soin +50' };
-    killFeed.unshift({ text:`★ ${d.player} → ${n[d.type]||d.type}`, time:Date.now(), pu:true });
+    const w = { pistol:'Pistolet', smg:'SMG', shotgun:'Shotgun', rifle:'Rifle', sniper:'Sniper' };
+    let text = n[d.type] || (d.type.startsWith('weapon_') ? w[d.type.split('_')[1]] : d.type);
+    killFeed.unshift({ text:`★ ${d.player} → ${text}`, time:Date.now(), pu:true });
     if (killFeed.length > 6) killFeed.length = 6;
   });
 
@@ -766,6 +768,13 @@ document.addEventListener('keydown', e => {
   if (e.key==='s'||e.key==='S'||e.key==='ArrowDown')  keys.down  = true;
   if (e.key==='a'||e.key==='A'||e.key==='ArrowLeft')  keys.left  = true;
   if (e.key==='d'||e.key==='D'||e.key==='ArrowRight') keys.right = true;
+  
+  // Weapon switching (1-5)
+  const weapons = ['pistol', 'smg', 'shotgun', 'rifle', 'sniper'];
+  if (e.key >= '1' && e.key <= '5' && socket) {
+    const weapon = weapons[parseInt(e.key) - 1];
+    socket.emit('changeWeapon', weapon);
+  }
 });
 document.addEventListener('keyup', e => {
   if (document.activeElement === nameInp) return;
@@ -922,6 +931,7 @@ function render(now) {
   drawFOVCone();
   drawParticles();
   drawPowerups();
+  drawWeapons();
   drawGrenades();
   drawHUD();
   if (gs.gameOver && gs.winner) drawGameOver(gs.winner);
@@ -993,6 +1003,31 @@ function drawPowerups() {
     ctx.shadowBlur = 0;
     ctx.fillStyle = '#fff'; ctx.font = `bold ${Math.round(r*1.1)}px Segoe UI`; ctx.textAlign = 'center';
     ctx.fillText(PU_ICONS[pu.type], pu.x, pu.y + r*0.38);
+  }
+  ctx.shadowBlur = 0;
+}
+
+function drawWeapons() {
+  if (!gs.weapons || !gs.weapons.length) return;
+  const t = Date.now() / 1000;
+  const weaponEmojis = { pistol: '🔫', smg: '🔫🔫', shotgun: '🔱', rifle: '🎯', sniper: '🎲' };
+  
+  for (const w of gs.weapons) {
+    const emoji = weaponEmojis[w.weapon] || '🔫';
+    const r = 18 * (1 + 0.1 * Math.sin(t * 4 + w.id));
+    
+    // Glow
+    ctx.shadowColor = '#ff9800'; ctx.shadowBlur = 28;
+    ctx.strokeStyle = '#ff9800'; ctx.lineWidth = 2;
+    ctx.beginPath(); ctx.arc(w.x, w.y, r+8, 0, Math.PI*2); ctx.stroke();
+    
+    // Background circle
+    ctx.fillStyle = '#ff980088';
+    ctx.beginPath(); ctx.arc(w.x, w.y, r, 0, Math.PI*2); ctx.fill();
+    
+    ctx.shadowBlur = 0;
+    ctx.fillStyle = '#fff'; ctx.font = `bold ${Math.round(r*1.2)}px Segoe UI`; ctx.textAlign = 'center';
+    ctx.fillText(emoji, w.x, w.y + r*0.3);
   }
   ctx.shadowBlur = 0;
 }
@@ -1184,6 +1219,7 @@ function drawHUD() {
 
   // active buffs (bottom-left)
   if (me && me.buffs) drawBuffs(me);
+  if (me) drawWeapon(me);
 
   // Grenade cooldown
   if (me && me.alive) {
@@ -1254,6 +1290,40 @@ function drawBuffs(me) {
     ctx.fillText(Math.ceil((expiry-now)/1000)+'s', bx+26, by-4);
     bx += 60;
   }
+}
+
+function drawWeapon(me) {
+  if (!me) return;
+  const weaponNames = { pistol: 'Pistolet', smg: 'SMG', shotgun: 'Shotgun', rifle: 'Rifle', sniper: 'Sniper' };
+  const weaponEmojis = { pistol: '🔫', smg: '🔫🔫', shotgun: '🔱', rifle: '🎯', sniper: '🎲' };
+  
+  const wx = arenaW - 180;
+  const wy = arenaH - 100;
+  
+  ctx.fillStyle = 'rgba(0,0,0,.8)';
+  ctx.fillRect(wx - 10, wy - 10, 160, 80);
+  ctx.strokeStyle = '#e74c3c';
+  ctx.lineWidth = 2;
+  ctx.strokeRect(wx - 10, wy - 10, 160, 80);
+  
+  ctx.fillStyle = '#fff';
+  ctx.font = 'bold 13px Segoe UI';
+  ctx.textAlign = 'left';
+  ctx.fillText('ARME', wx, wy + 8);
+  
+  ctx.fillStyle = '#e74c3c';
+  ctx.font = 'bold 24px Segoe UI';
+  ctx.fillText(weaponEmojis[me.weapon] || '🔫', wx + 5, wy + 35);
+  
+  ctx.fillStyle = '#f39c12';
+  ctx.font = 'bold 16px Segoe UI';
+  ctx.textAlign = 'right';
+  ctx.fillText(me.ammo, wx + 150, wy + 35);
+  
+  ctx.fillStyle = '#aaa';
+  ctx.font = '9px Segoe UI';
+  ctx.textAlign = 'left';
+  ctx.fillText('1-5: Changer', wx, wy + 60);
 }
 
 function drawFOVCone() {
