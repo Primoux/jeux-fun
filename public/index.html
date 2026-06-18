@@ -655,20 +655,34 @@ function drawObstacles() {
   }
 }
 
-// Vérifie si un point est dans le cône de vision ET pas derrière un obstacle
-function isVisible(tx, ty, targetTeam) {
-  const me = myId && gs.players[myId];
-  if (!me || !me.alive) return true;
-  // Coéquipiers toujours visibles
-  if (targetTeam !== undefined && targetTeam === (me.team ?? myTeam)) return true;
-  const dx = tx - me.x, dy = ty - me.y;
+// Visibilité depuis un observateur précis (position + angle de visée)
+function isVisibleFrom(ox, oy, facing, tx, ty) {
+  const dx = tx - ox, dy = ty - oy;
   const dist = Math.hypot(dx, dy);
   if (dist < NEAR_DIST) return true;
   if (dist > FOV_DIST + 30) return false;
   const angle = Math.atan2(dy, dx);
-  if (Math.abs(angleDiff(angle, mouseAngle)) > FOV_HALF + 0.04) return false;
-  // Raycasting : est-ce qu'un mur bloque avant le point cible ?
-  return castRay(me.x, me.y, angle) >= dist - 22;
+  if (Math.abs(angleDiff(angle, facing)) > FOV_HALF + 0.04) return false;
+  return castRay(ox, oy, angle) >= dist - 22;
+}
+
+// Visibilité depuis moi OU depuis n'importe quel coéquipier vivant
+function isVisible(tx, ty, targetTeam) {
+  const me = myId && gs.players[myId];
+  if (!me || !me.alive) return true;
+  // Coéquipiers toujours visibles entre eux
+  if (targetTeam !== undefined && targetTeam === (me.team ?? myTeam)) return true;
+  // Vision propre
+  if (isVisibleFrom(me.x, me.y, mouseAngle, tx, ty)) return true;
+  // Vision partagée avec les coéquipiers
+  const myTeamVal = me.team ?? myTeam;
+  for (const id in gs.players) {
+    if (id === myId) continue;
+    const p = gs.players[id];
+    if (!p.alive || p.team !== myTeamVal) continue;
+    if (isVisibleFrom(p.x, p.y, p.angle, tx, ty)) return true;
+  }
+  return false;
 }
 
 function drawPowerups() {
@@ -980,6 +994,39 @@ function drawFog() {
   fogCtx.beginPath();
   fogCtx.arc(me.x, me.y, NEAR_DIST, 0, Math.PI*2);
   fogCtx.fill();
+
+  // ── Vision partagée avec les coéquipiers ──
+  const myTeamVal = me.team ?? myTeam;
+  for (const id in gs.players) {
+    if (id === myId) continue;
+    const tm = gs.players[id];
+    if (!tm.alive || tm.team !== myTeamVal) continue;
+
+    // Cône du coéquipier
+    const tmPoly = buildFOVPoly(tm.x, tm.y, tm.angle);
+    if (tmPoly.length > 1) {
+      const tmGrad = fogCtx.createRadialGradient(tm.x, tm.y, 0, tm.x, tm.y, FOV_DIST);
+      tmGrad.addColorStop(0,    'rgba(0,0,0,1)');
+      tmGrad.addColorStop(0.85, 'rgba(0,0,0,1)');
+      tmGrad.addColorStop(1,    'rgba(0,0,0,0)');
+      fogCtx.fillStyle = tmGrad;
+      fogCtx.beginPath();
+      fogCtx.moveTo(tm.x, tm.y);
+      for (const [x,y] of tmPoly) fogCtx.lineTo(x, y);
+      fogCtx.closePath();
+      fogCtx.fill();
+    }
+
+    // Cercle proche du coéquipier
+    const tmNear = fogCtx.createRadialGradient(tm.x, tm.y, 0, tm.x, tm.y, NEAR_DIST);
+    tmNear.addColorStop(0,    'rgba(0,0,0,1)');
+    tmNear.addColorStop(0.65, 'rgba(0,0,0,1)');
+    tmNear.addColorStop(1,    'rgba(0,0,0,0)');
+    fogCtx.fillStyle = tmNear;
+    fogCtx.beginPath();
+    fogCtx.arc(tm.x, tm.y, NEAR_DIST, 0, Math.PI*2);
+    fogCtx.fill();
+  }
 
   fogCtx.globalCompositeOperation = 'source-over';
   ctx.drawImage(fogCanvas, 0, 0);
