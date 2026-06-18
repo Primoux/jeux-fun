@@ -367,13 +367,70 @@ const RPS_CLIENT = ['rock','paper','scissors'];
 
 let fogCanvas = null;
 let fogCtx    = null;
-const FOG_RADIUS = 270;
+const FOV_HALF  = (65 / 180) * Math.PI; // 65° demi-angle = 130° de cône total
+const FOV_DIST  = 340;                   // portée max du regard
+const NEAR_DIST = 68;                    // petit cercle toujours visible autour du joueur
 
 function initFogCanvas() {
   fogCanvas = document.createElement('canvas');
   fogCanvas.width  = arenaW;
   fogCanvas.height = arenaH;
   fogCtx = fogCanvas.getContext('2d');
+}
+
+// ── Raycasting helpers ───────────────────────────────────────────────────────
+function rayVsSeg(ox, oy, dx, dy, x1, y1, x2, y2) {
+  const ex = x2-x1, ey = y2-y1;
+  const denom = dx*ey - dy*ex;
+  if (Math.abs(denom) < 1e-10) return Infinity;
+  const rx = x1-ox, ry = y1-oy;
+  const t = (rx*ey - ry*ex) / denom;
+  const u = (rx*dy - ry*dx) / denom;
+  return (t > 0.5 && u >= 0 && u <= 1) ? t : Infinity;
+}
+
+function castRay(ox, oy, angle) {
+  const dx = Math.cos(angle), dy = Math.sin(angle);
+  let d = FOV_DIST;
+  for (const o of obstacles) {
+    const x2 = o.x+o.w, y2 = o.y+o.h;
+    d = Math.min(d,
+      rayVsSeg(ox,oy,dx,dy, o.x,o.y, x2,o.y),
+      rayVsSeg(ox,oy,dx,dy, x2,o.y, x2,y2),
+      rayVsSeg(ox,oy,dx,dy, o.x,y2, x2,y2),
+      rayVsSeg(ox,oy,dx,dy, o.x,o.y, o.x,y2)
+    );
+  }
+  d = Math.min(d,
+    rayVsSeg(ox,oy,dx,dy, 0,0, arenaW,0),
+    rayVsSeg(ox,oy,dx,dy, arenaW,0, arenaW,arenaH),
+    rayVsSeg(ox,oy,dx,dy, 0,arenaH, arenaW,arenaH),
+    rayVsSeg(ox,oy,dx,dy, 0,0, 0,arenaH)
+  );
+  return d;
+}
+
+function wrapAngle(a) { return ((a % (Math.PI*2)) + Math.PI*2) % (Math.PI*2); }
+function angleDiff(a, b) { const d = wrapAngle(a-b); return d > Math.PI ? d-Math.PI*2 : d; }
+
+function buildFOVPoly(px, py, facing) {
+  const angles = [];
+  // Rayon tous les 1.5° dans le cône
+  const step = Math.PI / 120;
+  for (let i = 0; i <= 120; i++) angles.push(facing - FOV_HALF + i * step);
+  // Rayons précis vers chaque coin d'obstacle dans le cône
+  for (const o of obstacles) {
+    for (const [cx,cy] of [[o.x,o.y],[o.x+o.w,o.y],[o.x+o.w,o.y+o.h],[o.x,o.y+o.h]]) {
+      if (Math.hypot(cx-px, cy-py) > FOV_DIST+20) continue;
+      const a = Math.atan2(cy-py, cx-px);
+      if (Math.abs(angleDiff(a, facing)) <= FOV_HALF)
+        angles.push(a-0.0008, a, a+0.0008);
+    }
+  }
+  angles.sort((a,b) => angleDiff(a,facing) - angleDiff(b,facing));
+  return angles
+    .filter(a => Math.abs(angleDiff(a,facing)) <= FOV_HALF + 0.01)
+    .map(a => { const d = castRay(px,py,a); return [px+Math.cos(a)*d, py+Math.sin(a)*d]; });
 }
 
 const keys     = { up:false, down:false, left:false, right:false };
@@ -764,36 +821,48 @@ function drawBuffs(me) {
 
 function drawFog() {
   if (!fogCanvas || !myId || !gs) return;
-  const me = myId ? gs.players[myId] : null;
+  const me = gs.players[myId];
 
   fogCtx.clearRect(0, 0, arenaW, arenaH);
 
   if (!me || !me.alive) {
-    // Mort : brouillard léger pour indiquer la désorientation
-    fogCtx.fillStyle = 'rgba(0,0,0,0.38)';
+    fogCtx.fillStyle = 'rgba(0,0,0,0.40)';
     fogCtx.fillRect(0, 0, arenaW, arenaH);
     ctx.drawImage(fogCanvas, 0, 0);
     return;
   }
 
-  // Brouillard dense
-  fogCtx.fillStyle = 'rgba(0,0,0,0.91)';
+  // Brouillard dense sur toute la map
+  fogCtx.fillStyle = 'rgba(0,0,0,0.93)';
   fogCtx.fillRect(0, 0, arenaW, arenaH);
 
-  // Percer un cercle dégradé autour du joueur
   fogCtx.globalCompositeOperation = 'destination-out';
-  const grad = fogCtx.createRadialGradient(
-    me.x, me.y, FOG_RADIUS * 0.68,
-    me.x, me.y, FOG_RADIUS
-  );
-  grad.addColorStop(0, 'rgba(0,0,0,1)');
-  grad.addColorStop(1, 'rgba(0,0,0,0)');
-  fogCtx.fillStyle = grad;
-  fogCtx.beginPath();
-  fogCtx.arc(me.x, me.y, FOG_RADIUS, 0, Math.PI * 2);
-  fogCtx.fill();
-  fogCtx.globalCompositeOperation = 'source-over';
 
+  // ── Cône de vision avec occlusion des obstacles ──
+  const poly = buildFOVPoly(me.x, me.y, mouseAngle);
+  if (poly.length > 1) {
+    const grad = fogCtx.createRadialGradient(me.x, me.y, FOV_DIST*0.55, me.x, me.y, FOV_DIST);
+    grad.addColorStop(0,   'rgba(0,0,0,1)');
+    grad.addColorStop(0.8, 'rgba(0,0,0,0.9)');
+    grad.addColorStop(1,   'rgba(0,0,0,0)');
+    fogCtx.fillStyle = grad;
+    fogCtx.beginPath();
+    fogCtx.moveTo(me.x, me.y);
+    for (const [x,y] of poly) fogCtx.lineTo(x, y);
+    fogCtx.closePath();
+    fogCtx.fill();
+  }
+
+  // ── Petit cercle toujours visible autour du joueur ──
+  const nearGrad = fogCtx.createRadialGradient(me.x, me.y, 18, me.x, me.y, NEAR_DIST);
+  nearGrad.addColorStop(0,   'rgba(0,0,0,0.9)');
+  nearGrad.addColorStop(1,   'rgba(0,0,0,0)');
+  fogCtx.fillStyle = nearGrad;
+  fogCtx.beginPath();
+  fogCtx.arc(me.x, me.y, NEAR_DIST, 0, Math.PI*2);
+  fogCtx.fill();
+
+  fogCtx.globalCompositeOperation = 'source-over';
   ctx.drawImage(fogCanvas, 0, 0);
 }
 
