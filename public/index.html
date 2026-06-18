@@ -753,9 +753,82 @@ function inputLoop() {
   }, 33);
 }
 
+// ── Particles ────────────────────────────────────────────────────────────────
+let particles  = [];
+let prevAlive  = {};
+let lastFrameT = 0;
+
+function spawnDeathParticles(x, y, color) {
+  // Flash central
+  particles.push({ x, y, vx:0, vy:0, color, size:28, alpha:1, life:0, maxLife:0.28, flash:true });
+  // Éclats
+  for (let i = 0; i < 28; i++) {
+    const angle = Math.random() * Math.PI * 2;
+    const speed = 90 + Math.random() * 220;
+    particles.push({
+      x, y,
+      vx: Math.cos(angle) * speed,
+      vy: Math.sin(angle) * speed,
+      color,
+      size: 2.5 + Math.random() * 5,
+      alpha: 1,
+      life: 0,
+      maxLife: 0.45 + Math.random() * 0.45,
+    });
+  }
+}
+
+function tickParticles(dt) {
+  // Détecte les morts frame par frame
+  if (gs) {
+    for (const id in gs.players) {
+      const p = gs.players[id];
+      if (prevAlive[id] === true && !p.alive) {
+        const ch = CMAP[p.characterId] || CMAP.classic;
+        spawnDeathParticles(p.x, p.y, ch.rb ? rbColor() : ch.color);
+      }
+      prevAlive[id] = p.alive;
+    }
+    for (const id in prevAlive) { if (!gs.players[id]) delete prevAlive[id]; }
+  }
+
+  const alive = [];
+  for (const pt of particles) {
+    pt.life += dt;
+    if (pt.life >= pt.maxLife) continue;
+    const t = pt.life / pt.maxLife;
+    pt.x += pt.vx * dt; pt.y += pt.vy * dt;
+    pt.vx *= 0.88; pt.vy *= 0.88;
+    pt.alpha = pt.flash ? (1 - t) * 0.85 : Math.pow(1 - t, 1.4);
+    alive.push(pt);
+  }
+  particles = alive;
+}
+
+function drawParticles() {
+  ctx.save();
+  for (const pt of particles) {
+    ctx.globalAlpha = pt.alpha;
+    ctx.shadowColor = pt.color; ctx.shadowBlur = pt.flash ? 30 : 10;
+    ctx.fillStyle   = pt.color;
+    ctx.beginPath();
+    if (pt.flash) {
+      ctx.arc(pt.x, pt.y, pt.size * (1 - pt.life / pt.maxLife), 0, Math.PI * 2);
+    } else {
+      ctx.arc(pt.x, pt.y, pt.size, 0, Math.PI * 2);
+    }
+    ctx.fill();
+  }
+  ctx.shadowBlur = 0; ctx.globalAlpha = 1;
+  ctx.restore();
+}
+
 // ── Render ───────────────────────────────────────────────────────────────────
-function render() {
+function render(now) {
   requestAnimationFrame(render);
+  const dt = lastFrameT ? Math.min((now - lastFrameT) / 1000, 0.1) : 0.016;
+  lastFrameT = now;
+
   ctx.clearRect(0, 0, arenaW, arenaH);
 
   if (!gs) {
@@ -765,12 +838,15 @@ function render() {
     return;
   }
 
+  tickParticles(dt);
+
   drawBg();
   drawObstacles();
   drawBullets();
   drawPlayers();
   drawRangeArc();
   drawFog();
+  drawParticles();
   drawPowerups();
   drawHUD();
   if (gs.gameOver && gs.winner) drawGameOver(gs.winner);
