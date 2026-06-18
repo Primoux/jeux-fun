@@ -767,11 +767,11 @@ function render() {
 
   drawBg();
   drawObstacles();
-  drawPowerups();
   drawBullets();
   drawPlayers();
   drawRangeArc();
   drawFog();
+  drawPowerups();
   drawHUD();
   if (gs.gameOver && gs.winner) drawGameOver(gs.winner);
 }
@@ -832,7 +832,6 @@ function drawPowerups() {
   if (!gs.powerups || !gs.powerups.length) return;
   const t = Date.now() / 1000;
   for (const pu of gs.powerups) {
-    if (!isVisible(pu.x, pu.y)) continue;
     const col   = PU_COLORS[pu.type];
     const r     = 15 * (1 + 0.12 * Math.sin(t * 5));
     ctx.shadowColor = col; ctx.shadowBlur = 22;
