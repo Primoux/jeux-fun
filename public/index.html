@@ -368,7 +368,7 @@ const RPS_CLIENT = ['rock','paper','scissors'];
 let fogCanvas = null;
 let fogCtx    = null;
 const FOV_HALF  = (65 / 180) * Math.PI; // 65° demi-angle = 130° de cône total
-const FOV_DIST  = 340;                   // portée max du regard
+const FOV_DIST  = 900;                   // portée max du regard
 const NEAR_DIST = 68;                    // petit cercle toujours visible autour du joueur
 
 function initFogCanvas() {
@@ -605,6 +605,7 @@ function render() {
   drawPowerups();
   drawBullets();
   drawPlayers();
+  drawRangeArc();
   drawFog();
   drawHUD();
   if (gs.gameOver && gs.winner) drawGameOver(gs.winner);
@@ -819,6 +820,30 @@ function drawBuffs(me) {
   }
 }
 
+function drawRangeArc() {
+  const me = gs.players && gs.players[myId];
+  if (!me || !me.alive) return;
+  ctx.save();
+  // Arc en pointillés au bord de la portée max
+  ctx.globalAlpha = 0.22;
+  ctx.strokeStyle = '#4ecca3';
+  ctx.lineWidth = 1.5;
+  ctx.setLineDash([6, 5]);
+  ctx.beginPath();
+  ctx.arc(me.x, me.y, FOV_DIST, mouseAngle - FOV_HALF, mouseAngle + FOV_HALF);
+  ctx.stroke();
+  // Lignes de bord du cône
+  ctx.globalAlpha = 0.10;
+  ctx.setLineDash([]);
+  ctx.beginPath();
+  ctx.moveTo(me.x, me.y);
+  ctx.lineTo(me.x + Math.cos(mouseAngle - FOV_HALF) * FOV_DIST, me.y + Math.sin(mouseAngle - FOV_HALF) * FOV_DIST);
+  ctx.moveTo(me.x, me.y);
+  ctx.lineTo(me.x + Math.cos(mouseAngle + FOV_HALF) * FOV_DIST, me.y + Math.sin(mouseAngle + FOV_HALF) * FOV_DIST);
+  ctx.stroke();
+  ctx.restore();
+}
+
 function drawFog() {
   if (!fogCanvas || !myId || !gs) return;
   const me = gs.players[myId];
@@ -832,8 +857,8 @@ function drawFog() {
     return;
   }
 
-  // Brouillard dense sur toute la map
-  fogCtx.fillStyle = 'rgba(0,0,0,0.93)';
+  // Brouillard 100% opaque — impossible de voir à travers
+  fogCtx.fillStyle = '#000';
   fogCtx.fillRect(0, 0, arenaW, arenaH);
 
   fogCtx.globalCompositeOperation = 'destination-out';
@@ -841,10 +866,11 @@ function drawFog() {
   // ── Cône de vision avec occlusion des obstacles ──
   const poly = buildFOVPoly(me.x, me.y, mouseAngle);
   if (poly.length > 1) {
-    const grad = fogCtx.createRadialGradient(me.x, me.y, FOV_DIST*0.55, me.x, me.y, FOV_DIST);
-    grad.addColorStop(0,   'rgba(0,0,0,1)');
-    grad.addColorStop(0.8, 'rgba(0,0,0,0.9)');
-    grad.addColorStop(1,   'rgba(0,0,0,0)');
+    // Plein visible sur toute la portée, fondu seulement aux 15% finaux
+    const grad = fogCtx.createRadialGradient(me.x, me.y, 0, me.x, me.y, FOV_DIST);
+    grad.addColorStop(0,    'rgba(0,0,0,1)');
+    grad.addColorStop(0.85, 'rgba(0,0,0,1)');
+    grad.addColorStop(1,    'rgba(0,0,0,0)');
     fogCtx.fillStyle = grad;
     fogCtx.beginPath();
     fogCtx.moveTo(me.x, me.y);
@@ -853,10 +879,11 @@ function drawFog() {
     fogCtx.fill();
   }
 
-  // ── Petit cercle toujours visible autour du joueur ──
-  const nearGrad = fogCtx.createRadialGradient(me.x, me.y, 18, me.x, me.y, NEAR_DIST);
-  nearGrad.addColorStop(0,   'rgba(0,0,0,0.9)');
-  nearGrad.addColorStop(1,   'rgba(0,0,0,0)');
+  // ── Petit cercle immédiat autour du joueur (jamais aveugle) ──
+  const nearGrad = fogCtx.createRadialGradient(me.x, me.y, 0, me.x, me.y, NEAR_DIST);
+  nearGrad.addColorStop(0,    'rgba(0,0,0,1)');
+  nearGrad.addColorStop(0.65, 'rgba(0,0,0,1)');
+  nearGrad.addColorStop(1,    'rgba(0,0,0,0)');
   fogCtx.fillStyle = nearGrad;
   fogCtx.beginPath();
   fogCtx.arc(me.x, me.y, NEAR_DIST, 0, Math.PI*2);
