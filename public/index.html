@@ -1,0 +1,669 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+<meta charset="UTF-8">
+<title>⚡ ARENA ROYALE</title>
+<style>
+* { margin:0; padding:0; box-sizing:border-box; }
+body { background:#07090f; color:#fff; font-family:'Segoe UI',sans-serif; user-select:none; overflow:hidden; }
+
+/* ── LOBBY ────────────────────────────────────────────────────────────────── */
+#lobby {
+  position:fixed; inset:0; display:flex; flex-direction:column;
+  align-items:center; justify-content:center; gap:18px; z-index:20; padding:24px;
+  background:radial-gradient(ellipse at 50% 40%, #1a0a2e 0%, #07090f 70%);
+  overflow-y:auto;
+}
+h1 {
+  font-size:52px; font-weight:900; letter-spacing:6px; line-height:1;
+  background:linear-gradient(90deg,#e74c3c,#f39c12,#e74c3c);
+  background-size:200%; -webkit-background-clip:text; background-clip:text;
+  -webkit-text-fill-color:transparent; animation:shimmer 3s linear infinite;
+}
+@keyframes shimmer { 0%{background-position:0%} 100%{background-position:200%} }
+
+.lobby-main { display:flex; gap:20px; width:100%; max-width:940px; }
+
+/* chars */
+#charSection { flex:1; min-width:0; }
+.sec-title { font-size:10px; font-weight:700; letter-spacing:3px; color:#555; margin-bottom:10px; }
+#charGrid { display:grid; grid-template-columns:repeat(4,1fr); gap:8px; }
+.cc {
+  background:#0d1117; border:2px solid #1c2535; border-radius:10px;
+  padding:10px 4px 8px; text-align:center; cursor:pointer;
+  transition:border-color .15s, transform .12s, box-shadow .15s;
+  display:flex; flex-direction:column; align-items:center; gap:5px;
+}
+.cc:hover:not(.lk)  { border-color:#444; transform:translateY(-2px); }
+.cc.sel { border-color:var(--cc); box-shadow:0 0 14px var(--cc)66; }
+.cc.lk  { opacity:.35; cursor:not-allowed; filter:grayscale(80%); }
+.ca {
+  width:42px; height:42px; border-radius:50%; background:var(--cc);
+  box-shadow:0 0 10px var(--cc); position:relative; flex-shrink:0;
+}
+.ca::after {
+  content:''; position:absolute; top:7px; left:9px;
+  width:11px; height:11px; border-radius:50%; background:rgba(255,255,255,.28);
+}
+/* gun on avatar */
+.ca-gun {
+  position:absolute; top:50%; left:50%; width:16px; height:5px;
+  background:rgba(0,0,0,.6); border-radius:2px; transform-origin:0 50%;
+}
+.cn { font-size:11px; font-weight:700; color:#ddd; }
+.cr { font-size:9px; color:#555; }
+.cc.sel .cr { color:var(--cc); font-weight:700; }
+
+/* battle pass */
+#bpSection { width:230px; flex-shrink:0; }
+#bpBox {
+  background:#0d1117; border:1px solid #1c2535; border-radius:10px; padding:14px;
+}
+.bp-lv { font-size:30px; font-weight:900; color:#f39c12; margin-bottom:2px; }
+.bp-lv small { font-size:12px; color:#555; font-weight:400; }
+.xpbg { height:8px; background:#1a2030; border-radius:4px; margin:6px 0 3px; overflow:hidden; }
+.xpfill {
+  height:100%; border-radius:4px;
+  background:linear-gradient(90deg,#f39c12,#e74c3c); transition:width .4s;
+}
+.xptxt { font-size:10px; color:#555; margin-bottom:12px; }
+.bp-list { display:flex; flex-direction:column; gap:5px; }
+.bp-row {
+  display:flex; align-items:center; gap:8px; padding:5px 8px;
+  border-radius:6px; font-size:11px; background:#111820;
+}
+.bp-row.done { color:#2ecc71; }
+.bp-row.next { border:1px solid #f39c12; color:#f39c12; background:#1a1200; }
+.bp-row.todo { color:#383838; }
+.bp-dot { width:9px; height:9px; border-radius:50%; flex-shrink:0; }
+
+/* bottom bar */
+.lobby-bot { display:flex; gap:10px; width:100%; max-width:940px; }
+#nameInput {
+  flex:1; font-size:18px; padding:11px 18px; border:2px solid #e74c3c;
+  background:#111; color:#fff; border-radius:8px; outline:none; transition:border-color .2s;
+}
+#nameInput:focus { border-color:#f39c12; }
+#joinBtn {
+  font-size:15px; padding:11px 28px; background:#e74c3c; border:none; color:#fff;
+  border-radius:8px; cursor:pointer; font-weight:800; letter-spacing:1px;
+  transition:all .15s; box-shadow:0 4px 20px #e74c3c88; white-space:nowrap;
+}
+#joinBtn:hover { background:#c0392b; transform:scale(1.04); }
+.hint { color:#3a3a4a; font-size:11px; line-height:2; text-align:center; }
+.hint b { color:#555; }
+
+/* level-up toast */
+#toast {
+  position:fixed; top:20px; left:50%;
+  transform:translateX(-50%) translateY(-90px);
+  background:linear-gradient(135deg,#f39c12,#e74c3c); color:#fff;
+  padding:12px 30px; border-radius:30px; font-weight:800; font-size:15px;
+  letter-spacing:1px; z-index:200; transition:transform .4s cubic-bezier(.34,1.56,.64,1);
+  box-shadow:0 6px 30px rgba(243,156,18,.55); pointer-events:none;
+}
+#toast.show { transform:translateX(-50%) translateY(0); }
+
+/* ── GAME ── */
+#gameWrap {
+  display:none; position:fixed; inset:0;
+  align-items:center; justify-content:center; background:#000;
+}
+#gameWrap.on { display:flex; }
+canvas { display:block; cursor:crosshair; }
+</style>
+</head>
+<body>
+
+<div id="toast"></div>
+
+<div id="lobby">
+  <h1>⚡ ARENA ROYALE</h1>
+
+  <div class="lobby-main">
+    <div id="charSection">
+      <div class="sec-title">Choisir ton personnage</div>
+      <div id="charGrid"></div>
+    </div>
+    <div id="bpSection">
+      <div class="sec-title">Battle Pass</div>
+      <div id="bpBox">
+        <div class="bp-lv" id="bpLv">0 <small>/ 50</small></div>
+        <div class="xpbg"><div class="xpfill" id="xpFill" style="width:0%"></div></div>
+        <div class="xptxt" id="xpTxt">0 / 500 XP</div>
+        <div class="bp-list" id="bpList"></div>
+      </div>
+    </div>
+  </div>
+
+  <div class="lobby-bot">
+    <input id="nameInput" type="text" placeholder="Pseudo..." maxlength="20"
+           autocomplete="off" spellcheck="false"/>
+    <button id="joinBtn">ENTRER DANS L'ARÈNE</button>
+  </div>
+  <div class="hint">
+    <b>WASD</b> / Flèches → Bouger &nbsp;|&nbsp; <b>Souris</b> → Viser &nbsp;|&nbsp; <b>Clic</b> → Tirer en rafale
+  </div>
+</div>
+
+<div id="gameWrap"><canvas id="c"></canvas></div>
+
+<script src="/socket.io/socket.io.js"></script>
+<script>
+// ── Character definitions ───────────────────────────────────────────────────
+const CHARS = [
+  { id:'classic', name:'Classique',   req:0,  color:'#e74c3c', glow:'#e74c3c', gFill:'#2c2c2c', gAcc:'#555',    bCol:'#ff6b6b', desc:'Toujours prêt'  },
+  { id:'shadow',  name:'Shadow',      req:3,  color:'#7d3c98', glow:'#9b59b6', gFill:'#1a0a2e', gAcc:'#6c3483', bCol:'#c39bd3', desc:'Furtif'         },
+  { id:'blaze',   name:'Blaze',       req:7,  color:'#e67e22', glow:'#f39c12', gFill:'#7b241c', gAcc:'#e74c3c', bCol:'#f0b27a', desc:'Pur feu'        },
+  { id:'frost',   name:'Frost',       req:12, color:'#2980b9', glow:'#5dade2', gFill:'#1a5276', gAcc:'#3498db', bCol:'#aed6f1', desc:'Sang froid'     },
+  { id:'neon',    name:'Neon',        req:18, color:'#e91e63', glow:'#f06292', gFill:'#880e4f', gAcc:'#ad1457', bCol:'#f48fb1', desc:'Flamboyant'     },
+  { id:'toxic',   name:'Toxic',       req:25, color:'#27ae60', glow:'#2ecc71', gFill:'#145a32', gAcc:'#1e8449', bCol:'#82e0aa', desc:'Radioactif'     },
+  { id:'gold',    name:'Or',          req:35, color:'#f39c12', glow:'#f1c40f', gFill:'#7d6608', gAcc:'#d4ac0d', bCol:'#fad7a0', desc:'Légendaire'     },
+  { id:'rainbow', name:'Arc-en-ciel', req:50, color:'#ffffff', glow:'#fff',    gFill:'#111',    gAcc:'#555',    bCol:null,      desc:'Ultime', rb:true },
+];
+const CMAP = Object.fromEntries(CHARS.map(c => [c.id, c]));
+
+function rbColor(offset = 0) {
+  return `hsl(${((Date.now() / 15) + offset) % 360},100%,60%)`;
+}
+function charColor(charId) {
+  const ch = CMAP[charId];
+  return ch ? (ch.rb ? rbColor() : ch.color) : '#fff';
+}
+
+// ── Persistence (localStorage) ──────────────────────────────────────────────
+const XP_PER_LEVEL = 500;
+const MAX_LEVEL    = 50;
+const XP_PER_KILL  = 100;
+
+function loadSave() {
+  try {
+    const d = JSON.parse(localStorage.getItem('arenaRoyale') || '{}');
+    return {
+      name:   typeof d.name   === 'string' ? d.name   : 'diahrée foudroyante',
+      charId: typeof d.charId === 'string' ? d.charId : 'classic',
+      xp:     typeof d.xp    === 'number'  ? d.xp     : 0,
+    };
+  } catch { return { name:'diahrée foudroyante', charId:'classic', xp:0 }; }
+}
+function writeSave(s) {
+  try { localStorage.setItem('arenaRoyale', JSON.stringify(s)); } catch {}
+}
+
+let save = loadSave();
+
+function getLevel(xp)    { return Math.min(MAX_LEVEL, Math.floor(xp / XP_PER_LEVEL)); }
+function getXpInLv(xp)   { return xp % XP_PER_LEVEL; }
+function currentLevel()  { return getLevel(save.xp); }
+
+// ── DOM refs ────────────────────────────────────────────────────────────────
+const lobby    = document.getElementById('lobby');
+const gameWrap = document.getElementById('gameWrap');
+const canvas   = document.getElementById('c');
+const ctx      = canvas.getContext('2d');
+const nameInp  = document.getElementById('nameInput');
+const joinBtn  = document.getElementById('joinBtn');
+const charGrid = document.getElementById('charGrid');
+const bpLvEl   = document.getElementById('bpLv');
+const xpFillEl = document.getElementById('xpFill');
+const xpTxtEl  = document.getElementById('xpTxt');
+const bpListEl = document.getElementById('bpList');
+const toastEl  = document.getElementById('toast');
+
+nameInp.value = save.name;
+
+// ── Build lobby UI ──────────────────────────────────────────────────────────
+function buildCharGrid() {
+  charGrid.innerHTML = '';
+  const lv = currentLevel();
+  CHARS.forEach(ch => {
+    const locked = lv < ch.req;
+    const sel    = save.charId === ch.id;
+    const col    = ch.rb ? '#aaa' : ch.color;
+
+    const div = document.createElement('div');
+    div.className = 'cc' + (sel ? ' sel' : '') + (locked ? ' lk' : '');
+    div.style.setProperty('--cc', col);
+    div.innerHTML = `
+      <div class="ca"></div>
+      <div class="cn">${ch.name}</div>
+      <div class="cr">${locked ? `🔒 Niv.${ch.req}` : sel ? '✓ ACTIF' : ch.desc}</div>
+    `;
+    if (!locked) {
+      div.addEventListener('click', () => {
+        save.charId = ch.id; writeSave(save);
+        buildCharGrid();
+        if (socket) socket.emit('setCharacter', ch.id);
+      });
+    }
+    charGrid.appendChild(div);
+  });
+}
+
+function buildBP() {
+  const lv  = currentLevel();
+  const xpI = getXpInLv(save.xp);
+  const pct = (xpI / XP_PER_LEVEL) * 100;
+
+  bpLvEl.innerHTML = `${lv} <small>/ ${MAX_LEVEL}</small>`;
+  xpFillEl.style.width = pct + '%';
+  xpTxtEl.textContent  = `${xpI} / ${XP_PER_LEVEL} XP`;
+
+  bpListEl.innerHTML = '';
+  const rewards = CHARS.filter(c => c.req > 0);
+  rewards.slice(0, 6).forEach(ch => {
+    const done = lv >= ch.req;
+    const next = !done && rewards.find(c => lv < c.req) === ch;
+    const col  = ch.rb ? '#aaa' : ch.color;
+    const div  = document.createElement('div');
+    div.className = 'bp-row ' + (done ? 'done' : next ? 'next' : 'todo');
+    div.innerHTML = `
+      <div class="bp-dot" style="background:${done||next ? col : '#282828'}"></div>
+      <span>Niv.${ch.req} — ${ch.name}</span>
+      ${done ? '<span style="margin-left:auto">✓</span>' : next ? '<span style="margin-left:auto">→</span>' : ''}
+    `;
+    bpListEl.appendChild(div);
+  });
+}
+
+buildCharGrid();
+buildBP();
+nameInp.focus();
+
+// ── XP & Level up ───────────────────────────────────────────────────────────
+let toastTimer = null;
+function addXP(amount) {
+  const prevLv = currentLevel();
+  save.xp = Math.min(MAX_LEVEL * XP_PER_LEVEL, save.xp + amount);
+  writeSave(save);
+  buildBP();
+  const newLv = currentLevel();
+  if (newLv > prevLv) {
+    const unlocked = CHARS.find(c => c.req === newLv);
+    showToast(unlocked
+      ? `Niveau ${newLv} ! Débloqué : ${unlocked.name} !`
+      : `Niveau ${newLv} !`);
+    buildCharGrid();
+  }
+}
+
+function showToast(msg) {
+  toastEl.textContent = msg;
+  toastEl.classList.add('show');
+  clearTimeout(toastTimer);
+  toastTimer = setTimeout(() => toastEl.classList.remove('show'), 3200);
+}
+
+// ── Join ────────────────────────────────────────────────────────────────────
+joinBtn.addEventListener('click', join);
+nameInp.addEventListener('keydown', e => { if (e.key === 'Enter') join(); });
+
+function join() {
+  const name = nameInp.value.trim() || 'diahrée foudroyante';
+  save.name = name; writeSave(save);
+  lobby.style.display = 'none';
+  gameWrap.classList.add('on');
+  connect(name);
+}
+
+// ── Game state ──────────────────────────────────────────────────────────────
+let myId      = null;
+let gs        = null;
+let arenaW    = 1200;
+let arenaH    = 700;
+let obstacles = [];
+let maxKills  = 15;
+let scale     = 1;
+let socket    = null;
+let killFeed  = [];
+
+const keys     = { up:false, down:false, left:false, right:false };
+let mouseAngle = 0;
+let shooting   = false;
+
+const PU_COLORS = { speed:'#f1c40f', rapidfire:'#e67e22', damage:'#e74c3c', heal:'#2ecc71' };
+const PU_ICONS  = { speed:'S', rapidfire:'R', damage:'D', heal:'+' };
+const PU_LABELS = { speed:'VITESSE', rapidfire:'CADENCE', damage:'DEGATS', heal:'SOIN' };
+const BUFF_DUR  = 8000;
+
+// ── Resize ──────────────────────────────────────────────────────────────────
+function resize() {
+  scale = Math.min(window.innerWidth / arenaW, window.innerHeight / arenaH);
+  canvas.width  = arenaW;
+  canvas.height = arenaH;
+  canvas.style.width  = (arenaW * scale) + 'px';
+  canvas.style.height = (arenaH * scale) + 'px';
+}
+window.addEventListener('resize', resize);
+resize();
+
+// ── Socket ──────────────────────────────────────────────────────────────────
+function connect(name) {
+  socket = io();
+
+  socket.on('connect', () => {
+    myId = socket.id;
+    socket.emit('setName', name);
+    socket.emit('setCharacter', save.charId);
+    resize();
+    requestAnimationFrame(render);
+    inputLoop();
+  });
+
+  socket.on('init', d => {
+    arenaW = d.arenaW; arenaH = d.arenaH;
+    obstacles = d.obstacles; maxKills = d.maxKills;
+    resize();
+  });
+
+  socket.on('state', d => { gs = d; });
+
+  socket.on('kill', d => {
+    killFeed.unshift({ text:`• ${d.killer} a tué ${d.victim}`, time:Date.now() });
+    if (killFeed.length > 6) killFeed.length = 6;
+    if (d.killerId === myId) addXP(XP_PER_KILL);
+  });
+
+  socket.on('powerup', d => {
+    const n = { speed:'Vitesse', rapidfire:'Cadence rapide', damage:'Dégâts+', heal:'Soin +50' };
+    killFeed.unshift({ text:`★ ${d.player} → ${n[d.type]||d.type}`, time:Date.now(), pu:true });
+    if (killFeed.length > 6) killFeed.length = 6;
+  });
+
+  socket.on('reset', () => { killFeed = []; });
+}
+
+// ── Input ────────────────────────────────────────────────────────────────────
+const GAME_KEYS = new Set(['w','W','s','S','a','A','d','D',
+  'ArrowUp','ArrowDown','ArrowLeft','ArrowRight']);
+
+document.addEventListener('keydown', e => {
+  if (document.activeElement === nameInp) return;
+  if (GAME_KEYS.has(e.key)) e.preventDefault();
+  if (e.key==='w'||e.key==='W'||e.key==='ArrowUp')    keys.up    = true;
+  if (e.key==='s'||e.key==='S'||e.key==='ArrowDown')  keys.down  = true;
+  if (e.key==='a'||e.key==='A'||e.key==='ArrowLeft')  keys.left  = true;
+  if (e.key==='d'||e.key==='D'||e.key==='ArrowRight') keys.right = true;
+});
+document.addEventListener('keyup', e => {
+  if (document.activeElement === nameInp) return;
+  if (e.key==='w'||e.key==='W'||e.key==='ArrowUp')    keys.up    = false;
+  if (e.key==='s'||e.key==='S'||e.key==='ArrowDown')  keys.down  = false;
+  if (e.key==='a'||e.key==='A'||e.key==='ArrowLeft')  keys.left  = false;
+  if (e.key==='d'||e.key==='D'||e.key==='ArrowRight') keys.right = false;
+});
+window.addEventListener('blur', () => {
+  keys.up=keys.down=keys.left=keys.right=false; shooting=false;
+});
+canvas.addEventListener('mousemove', e => {
+  const r = canvas.getBoundingClientRect();
+  const mx = (e.clientX - r.left) / scale;
+  const my = (e.clientY - r.top)  / scale;
+  if (gs && myId && gs.players[myId]) {
+    const me = gs.players[myId];
+    mouseAngle = Math.atan2(my - me.y, mx - me.x);
+  }
+});
+canvas.addEventListener('mousedown',  e => { if (e.button===0) shooting = true; });
+canvas.addEventListener('mouseup',    e => { if (e.button===0) shooting = false; });
+canvas.addEventListener('contextmenu', e => e.preventDefault());
+
+function inputLoop() {
+  setInterval(() => {
+    if (!socket) return;
+    socket.emit('input', { ...keys, shooting, angle: mouseAngle });
+  }, 33);
+}
+
+// ── Render ───────────────────────────────────────────────────────────────────
+function render() {
+  requestAnimationFrame(render);
+  ctx.clearRect(0, 0, arenaW, arenaH);
+
+  if (!gs) {
+    ctx.fillStyle = '#07090f'; ctx.fillRect(0,0,arenaW,arenaH);
+    ctx.fillStyle = '#333'; ctx.font = '20px Segoe UI'; ctx.textAlign = 'center';
+    ctx.fillText('Connexion…', arenaW/2, arenaH/2);
+    return;
+  }
+
+  drawBg();
+  drawObstacles();
+  drawPowerups();
+  drawBullets();
+  drawPlayers();
+  drawHUD();
+  if (gs.gameOver && gs.winner) drawGameOver(gs.winner);
+}
+
+// ── Draw ─────────────────────────────────────────────────────────────────────
+function drawBg() {
+  ctx.fillStyle = '#0d1117'; ctx.fillRect(0,0,arenaW,arenaH);
+  ctx.strokeStyle = '#131923'; ctx.lineWidth = 1;
+  for (let x=0; x<arenaW; x+=60) { ctx.beginPath(); ctx.moveTo(x,0); ctx.lineTo(x,arenaH); ctx.stroke(); }
+  for (let y=0; y<arenaH; y+=60) { ctx.beginPath(); ctx.moveTo(0,y); ctx.lineTo(arenaW,y); ctx.stroke(); }
+  ctx.shadowColor = '#e74c3c'; ctx.shadowBlur = 18;
+  ctx.strokeStyle = '#e74c3c'; ctx.lineWidth = 3;
+  ctx.strokeRect(2,2,arenaW-4,arenaH-4);
+  ctx.shadowBlur = 0;
+}
+
+function drawObstacles() {
+  for (const o of obstacles) {
+    ctx.fillStyle = 'rgba(0,0,0,.45)'; ctx.fillRect(o.x+5,o.y+5,o.w,o.h);
+    ctx.fillStyle = '#1e2a38';         ctx.fillRect(o.x,o.y,o.w,o.h);
+    ctx.fillStyle = '#2c3e50';
+    ctx.fillRect(o.x,o.y,o.w,7); ctx.fillRect(o.x,o.y,7,o.h);
+    ctx.strokeStyle = '#141e28'; ctx.lineWidth = 2; ctx.strokeRect(o.x,o.y,o.w,o.h);
+  }
+}
+
+function drawPowerups() {
+  if (!gs.powerups || !gs.powerups.length) return;
+  const t = Date.now() / 1000;
+  for (const pu of gs.powerups) {
+    const col   = PU_COLORS[pu.type];
+    const r     = 15 * (1 + 0.12 * Math.sin(t * 5));
+    ctx.shadowColor = col; ctx.shadowBlur = 22;
+    ctx.strokeStyle = col; ctx.lineWidth = 2;
+    ctx.beginPath(); ctx.arc(pu.x, pu.y, r+6, 0, Math.PI*2); ctx.stroke();
+    ctx.fillStyle = col + 'bb';
+    ctx.beginPath(); ctx.arc(pu.x, pu.y, r, 0, Math.PI*2); ctx.fill();
+    ctx.shadowBlur = 0;
+    ctx.fillStyle = '#fff'; ctx.font = `bold ${Math.round(r*1.1)}px Segoe UI`; ctx.textAlign = 'center';
+    ctx.fillText(PU_ICONS[pu.type], pu.x, pu.y + r*0.38);
+  }
+  ctx.shadowBlur = 0;
+}
+
+function drawBullets() {
+  for (const b of gs.bullets) {
+    const owner = gs.players[b.ownerId];
+    let col = '#fff';
+    if (owner) {
+      const ch = CMAP[owner.characterId];
+      col = ch ? (ch.rb ? rbColor(b.id * 30) : (ch.bCol || ch.color)) : owner.color;
+    }
+    ctx.shadowColor = col; ctx.shadowBlur = 14;
+    ctx.fillStyle = col; ctx.beginPath(); ctx.arc(b.x, b.y, 5, 0, Math.PI*2); ctx.fill();
+    ctx.shadowBlur = 0;
+    ctx.fillStyle = col + '55'; ctx.beginPath(); ctx.arc(b.x, b.y, 8, 0, Math.PI*2); ctx.fill();
+  }
+  ctx.shadowBlur = 0;
+}
+
+function drawPlayers() {
+  for (const id in gs.players) {
+    const p    = gs.players[id];
+    const isMe = id === myId;
+    if (!p.alive) continue;
+
+    const ch   = CMAP[p.characterId] || CMAP.classic;
+    const col  = ch.rb ? rbColor()    : ch.color;
+    const glow = ch.rb ? rbColor(60)  : ch.glow;
+
+    ctx.save();
+    ctx.translate(p.x, p.y);
+
+    if (isMe) { ctx.shadowColor = glow; ctx.shadowBlur = 24; }
+    ctx.fillStyle = col;
+    ctx.beginPath(); ctx.arc(0, 0, 18, 0, Math.PI*2); ctx.fill();
+    ctx.shadowBlur = 0;
+
+    ctx.fillStyle = 'rgba(255,255,255,.22)';
+    ctx.beginPath(); ctx.arc(-5, -5, 9, 0, Math.PI*2); ctx.fill();
+
+    const ang = isMe ? mouseAngle : p.angle;
+    ctx.rotate(ang);
+    ctx.fillStyle = ch.gFill; ctx.fillRect(12,-4,20,8);
+    ctx.fillStyle = ch.gAcc;  ctx.fillRect(13,-3,17,6);
+    ctx.restore();
+
+    // name tag
+    ctx.font = 'bold 12px Segoe UI'; ctx.textAlign = 'center';
+    const nw = ctx.measureText(p.name).width + 10;
+    ctx.fillStyle = 'rgba(0,0,0,.65)';
+    ctx.fillRect(p.x - nw/2, p.y - 38, nw, 16);
+    ctx.fillStyle = isMe ? '#fff' : '#ccc';
+    ctx.fillText(p.name, p.x, p.y - 26);
+
+    // health bar
+    const bw = 52;
+    ctx.fillStyle = '#222'; ctx.fillRect(p.x-bw/2, p.y+22, bw, 6);
+    const hp = p.health/100;
+    ctx.fillStyle = hp>.6?'#2ecc71':hp>.3?'#f39c12':'#e74c3c';
+    ctx.fillRect(p.x-bw/2, p.y+22, bw*hp, 6);
+    ctx.strokeStyle = '#333'; ctx.lineWidth = 1;
+    ctx.strokeRect(p.x-bw/2, p.y+22, bw, 6);
+  }
+}
+
+function drawHUD() {
+  const me = myId ? gs.players[myId] : null;
+
+  // scoreboard
+  const sorted = Object.values(gs.players).sort((a,b) => b.score - a.score);
+  const sbX = arenaW - 230, sbY = 14;
+  ctx.fillStyle = 'rgba(0,0,0,.7)';
+  ctx.fillRect(sbX-10, sbY-4, 224, 32 + sorted.length*30);
+  ctx.font = 'bold 11px Segoe UI'; ctx.textAlign = 'left'; ctx.fillStyle = '#666';
+  ctx.fillText(`SCORES — objectif ${maxKills} kills`, sbX, sbY+10);
+  sorted.forEach((p, i) => {
+    const y    = sbY + 34 + i*30;
+    const isMe = p.id === myId;
+    const ch   = CMAP[p.characterId] || CMAP.classic;
+    const col  = ch.rb ? rbColor() : ch.color;
+    ctx.fillStyle = col; ctx.beginPath(); ctx.arc(sbX+7,y,7,0,Math.PI*2); ctx.fill();
+    ctx.fillStyle = isMe?'#fff':'#aaa';
+    ctx.font = isMe?'bold 14px Segoe UI':'13px Segoe UI'; ctx.textAlign = 'left';
+    ctx.fillText(p.name, sbX+20, y+5);
+    ctx.font = 'bold 16px Segoe UI'; ctx.textAlign = 'right'; ctx.fillStyle = '#fff';
+    ctx.fillText(p.score, sbX+210, y+5);
+  });
+
+  // health bar
+  if (me && me.alive) {
+    const bw = 260, bh = 16, bx = arenaW/2 - bw/2, by = arenaH - 38;
+    ctx.fillStyle = 'rgba(0,0,0,.65)';
+    ctx.fillRect(bx-10, by-22, bw+20, 44);
+    ctx.font = 'bold 11px Segoe UI'; ctx.textAlign = 'center'; ctx.fillStyle = '#777';
+    ctx.fillText('VIE', arenaW/2, by-6);
+    ctx.fillStyle = '#1a1a1a'; ctx.fillRect(bx, by, bw, bh);
+    const hp = me.health/100;
+    ctx.fillStyle = hp>.6?'#2ecc71':hp>.3?'#f39c12':'#e74c3c';
+    ctx.fillRect(bx, by, bw*hp, bh);
+    ctx.strokeStyle = '#333'; ctx.lineWidth = 1; ctx.strokeRect(bx, by, bw, bh);
+    ctx.fillStyle = '#fff'; ctx.font = 'bold 11px Segoe UI';
+    ctx.fillText(`${me.health} / 100`, arenaW/2, by+12);
+  }
+
+  // XP bar (bottom-right)
+  if (me && me.alive) {
+    const xbw = 130, xbh = 16, xbx = arenaW - 148, xby = arenaH - 38;
+    const lv  = currentLevel();
+    const xpI = getXpInLv(save.xp);
+    const pct = xpI / XP_PER_LEVEL;
+    ctx.fillStyle = 'rgba(0,0,0,.65)';
+    ctx.fillRect(xbx-10, xby-22, xbw+20, 44);
+    ctx.font = 'bold 11px Segoe UI'; ctx.textAlign = 'center'; ctx.fillStyle = '#f39c12';
+    ctx.fillText(`NIV. ${lv}`, xbx + xbw/2, xby-6);
+    ctx.fillStyle = '#1a1a1a'; ctx.fillRect(xbx, xby, xbw, xbh);
+    const grad = ctx.createLinearGradient(xbx,0,xbx+xbw,0);
+    grad.addColorStop(0,'#f39c12'); grad.addColorStop(1,'#e74c3c');
+    ctx.fillStyle = grad; ctx.fillRect(xbx, xby, xbw*pct, xbh);
+    ctx.strokeStyle = '#555'; ctx.lineWidth = 1; ctx.strokeRect(xbx, xby, xbw, xbh);
+    ctx.fillStyle = '#fff'; ctx.font = '10px Segoe UI';
+    ctx.fillText(`${xpI} / ${XP_PER_LEVEL} XP`, xbx+xbw/2, xby+12);
+  }
+
+  // active buffs (bottom-left)
+  if (me && me.buffs) drawBuffs(me);
+
+  // respawn overlay
+  if (me && !me.alive) {
+    const left = Math.max(0, Math.ceil((me.respawnAt - Date.now()) / 1000));
+    ctx.fillStyle = 'rgba(0,0,0,.72)';
+    ctx.fillRect(arenaW/2-170, arenaH/2-56, 340, 112);
+    ctx.font = 'bold 32px Segoe UI'; ctx.textAlign = 'center'; ctx.fillStyle = '#e74c3c';
+    ctx.fillText('ÉLIMINÉ !', arenaW/2, arenaH/2-10);
+    ctx.font = '18px Segoe UI'; ctx.fillStyle = '#aaa';
+    ctx.fillText(`Réapparition dans ${left}s…`, arenaW/2, arenaH/2+28);
+  }
+
+  // kill feed
+  const now = Date.now();
+  killFeed = killFeed.filter(k => now - k.time < 5000);
+  killFeed.forEach((k, i) => {
+    const alpha = Math.min(1, (5000 - (now - k.time)) / 400);
+    ctx.fillStyle = `rgba(0,0,0,${.65*alpha})`;
+    ctx.fillRect(10, 12 + i*28, 285, 22);
+    ctx.fillStyle = k.pu ? `rgba(243,156,18,${alpha})` : `rgba(255,255,255,${alpha})`;
+    ctx.font = '13px Segoe UI'; ctx.textAlign = 'left';
+    ctx.fillText(k.text, 16, 28 + i*28);
+  });
+}
+
+function drawBuffs(me) {
+  const now = Date.now();
+  let bx    = 14;
+  const by  = arenaH - 82;
+  for (const type of ['speed','rapidfire','damage']) {
+    const expiry = me.buffs[type];
+    if (!expiry || now >= expiry) continue;
+    const ratio = (expiry - now) / BUFF_DUR;
+    const col   = PU_COLORS[type];
+    ctx.fillStyle = 'rgba(0,0,0,.8)'; ctx.fillRect(bx,by,52,52);
+    ctx.fillStyle = col+'44';         ctx.fillRect(bx, by+52*(1-ratio), 52, 52*ratio);
+    ctx.strokeStyle = col; ctx.lineWidth = 2; ctx.strokeRect(bx,by,52,52);
+    ctx.fillStyle = '#fff'; ctx.font = 'bold 22px Segoe UI'; ctx.textAlign = 'center';
+    ctx.fillText(PU_ICONS[type], bx+26, by+32);
+    ctx.fillStyle = col; ctx.font = 'bold 8px Segoe UI';
+    ctx.fillText(PU_LABELS[type], bx+26, by+47);
+    ctx.fillStyle = '#fff'; ctx.font = 'bold 11px Segoe UI';
+    ctx.fillText(Math.ceil((expiry-now)/1000)+'s', bx+26, by-4);
+    bx += 60;
+  }
+}
+
+function drawGameOver(w) {
+  ctx.fillStyle = 'rgba(0,0,0,.82)'; ctx.fillRect(0,0,arenaW,arenaH);
+  ctx.textAlign = 'center';
+  ctx.font = 'bold 70px Segoe UI'; ctx.fillStyle = '#f39c12';
+  ctx.shadowColor = '#f39c12'; ctx.shadowBlur = 30;
+  ctx.fillText('VICTOIRE !', arenaW/2, arenaH/2-60);
+  ctx.shadowBlur = 0;
+  const winner = gs.players[w.id];
+  const wch    = winner ? (CMAP[winner.characterId] || CMAP.classic) : CMAP.classic;
+  ctx.font = 'bold 40px Segoe UI';
+  ctx.fillStyle = wch.rb ? rbColor() : wch.color;
+  ctx.fillText(w.name, arenaW/2, arenaH/2+10);
+  ctx.font = '20px Segoe UI'; ctx.fillStyle = '#888';
+  ctx.fillText(`${w.score} kills  —  Prochaine partie dans 5s…`, arenaW/2, arenaH/2+58);
+  if (w.id === myId) {
+    ctx.font = 'bold 26px Segoe UI'; ctx.fillStyle = '#2ecc71';
+    ctx.fillText("C'est toi ! GG !", arenaW/2, arenaH/2-14);
+  }
+}
+</script>
+</body>
+</html>
