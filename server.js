@@ -30,7 +30,7 @@ const BUFF_DURATION  = 8000;
 const CHAR_COLORS = {
   classic:'#e74c3c', shadow:'#7d3c98', blaze:'#e67e22',
   frost:'#2980b9',   neon:'#e91e63',   toxic:'#27ae60',
-  gold:'#f39c12',    rainbow:'#ffffff',
+  gold:'#f39c12',    rainbow:'#ffffff', trump:'#ff7518',
 };
 
 const OBSTACLES = [
@@ -64,8 +64,10 @@ let bullets  = [];
 let bulletId = 0;
 let powerups  = [];
 let powerupId = 0;
-let gameOver  = false;
-let winner    = null;
+let gameOver      = false;
+let winner        = null;
+let rpsChallenges = {};
+let rpsId         = 0;
 
 // ── Helpers ──────────────────────────────────────────────────────────────────
 function circleRect(cx, cy, cr, rx, ry, rw, rh) {
@@ -100,6 +102,41 @@ function randomPowerupPos() {
     if (ok) return { x, y };
   }
   return null;
+}
+
+const RPS_CHOICES = ['rock', 'paper', 'scissors'];
+
+function getRPSWinner(a, b) {
+  if (a === b) return 'draw';
+  if ((a==='rock'&&b==='scissors')||(a==='scissors'&&b==='paper')||(a==='paper'&&b==='rock')) return 'a';
+  return 'b';
+}
+
+function resolveRPS(cid) {
+  const ch = rpsChallenges[cid];
+  if (!ch || ch.resolved) return;
+  ch.resolved = true;
+  delete rpsChallenges[cid];
+  const kc  = ch.killerChoice || RPS_CHOICES[Math.floor(Math.random() * 3)];
+  const vc  = ch.victimChoice || RPS_CHOICES[Math.floor(Math.random() * 3)];
+  const res = getRPSWinner(kc, vc);
+  io.emit('rps_result', {
+    cid, killerChoice: kc, victimChoice: vc,
+    killerName: ch.killerName, victimName: ch.victimName,
+    killerWon: res === 'a', draw: res === 'draw',
+  });
+  if (res === 'a') {
+    const shooter = players[ch.killerId];
+    if (shooter) {
+      shooter.score++;
+      io.emit('kill', { killerId: ch.killerId, killer: ch.killerName, victim: ch.victimName });
+      if (shooter.score >= MAX_KILLS) {
+        gameOver = true;
+        winner   = { id: ch.killerId, name: ch.killerName, score: shooter.score };
+        setTimeout(() => { resetGame(); io.emit('reset'); }, 5000);
+      }
+    }
+  }
 }
 
 function resetGame() {
@@ -230,12 +267,25 @@ function tick() {
           p.respawnAt = now + RESPAWN_MS;
           const shooter = players[b.ownerId];
           if (shooter) {
-            shooter.score++;
-            io.emit('kill', { killerId: b.ownerId, killer: shooter.name, victim: p.name });
-            if (shooter.score >= MAX_KILLS) {
-              gameOver = true;
-              winner   = { id: b.ownerId, name: shooter.name, score: shooter.score };
-              setTimeout(() => { resetGame(); io.emit('reset'); }, 5000);
+            if (Math.random() < 0.20) {
+              const cid = rpsId++;
+              rpsChallenges[cid] = {
+                id: cid, resolved: false,
+                killerId: b.ownerId, killerName: shooter.name, killerChoice: null,
+                victimId: id,        victimName: p.name,       victimChoice: null,
+              };
+              io.to(b.ownerId).emit('rps_challenge', { cid, role:'killer', opponent: p.name });
+              io.to(id).emit('rps_challenge',         { cid, role:'victim', opponent: shooter.name });
+              io.emit('rps_started', { killer: shooter.name, victim: p.name });
+              setTimeout(() => resolveRPS(cid), 6000);
+            } else {
+              shooter.score++;
+              io.emit('kill', { killerId: b.ownerId, killer: shooter.name, victim: p.name });
+              if (shooter.score >= MAX_KILLS) {
+                gameOver = true;
+                winner   = { id: b.ownerId, name: shooter.name, score: shooter.score };
+                setTimeout(() => { resetGame(); io.emit('reset'); }, 5000);
+              }
             }
           }
         }
@@ -314,6 +364,14 @@ io.on('connection', (socket) => {
     p.input.right    = !!data.right;
     p.input.shooting = !!data.shooting;
     if (typeof data.angle === 'number') p.angle = data.angle;
+  });
+
+  socket.on('rps_pick', ({ cid, choice }) => {
+    const ch = rpsChallenges[cid];
+    if (!ch || ch.resolved || !RPS_CHOICES.includes(choice)) return;
+    if (socket.id === ch.killerId && !ch.killerChoice) ch.killerChoice = choice;
+    else if (socket.id === ch.victimId && !ch.victimChoice) ch.victimChoice = choice;
+    if (ch.killerChoice && ch.victimChoice) resolveRPS(cid);
   });
 
   socket.on('disconnect', () => { delete players[socket.id]; });

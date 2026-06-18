@@ -27,7 +27,7 @@ h1 {
 /* chars */
 #charSection { flex:1; min-width:0; }
 .sec-title { font-size:10px; font-weight:700; letter-spacing:3px; color:#555; margin-bottom:10px; }
-#charGrid { display:grid; grid-template-columns:repeat(4,1fr); gap:8px; }
+#charGrid { display:grid; grid-template-columns:repeat(3,1fr); gap:8px; }
 .cc {
   background:#0d1117; border:2px solid #1c2535; border-radius:10px;
   padding:10px 4px 8px; text-align:center; cursor:pointer;
@@ -104,6 +104,35 @@ h1 {
 }
 #toast.show { transform:translateX(-50%) translateY(0); }
 
+/* ── RPS MODAL ── */
+#rpsOverlay {
+  position:fixed; inset:0; display:none; align-items:center; justify-content:center;
+  z-index:100; background:rgba(0,0,0,.6);
+}
+#rpsOverlay.on { display:flex; }
+#rpsBox {
+  background:#0d1117; border:3px solid #f39c12; border-radius:18px;
+  padding:28px 38px; text-align:center; min-width:340px;
+  box-shadow:0 0 50px #f39c1255; animation:popIn .28s cubic-bezier(.34,1.56,.64,1);
+}
+@keyframes popIn { from{transform:scale(.65);opacity:0} to{transform:scale(1);opacity:1} }
+#rpsTitle { font-size:20px; font-weight:900; color:#f39c12; letter-spacing:1px; margin-bottom:6px; }
+#rpsDesc  { font-size:13px; color:#777; margin-bottom:18px; min-height:34px; }
+#rpsBtns  { display:flex; gap:14px; justify-content:center; margin-bottom:14px; }
+.rps-btn {
+  font-size:36px; padding:12px 16px; background:#111820; border:2px solid #1e2a3a;
+  border-radius:14px; cursor:pointer; transition:all .13s; line-height:1;
+}
+.rps-btn:hover:not(:disabled)  { border-color:#f39c12; transform:scale(1.12); }
+.rps-btn.picked { border-color:#f39c12; box-shadow:0 0 18px #f39c1266; }
+.rps-btn:disabled { opacity:.35; cursor:not-allowed; transform:none; }
+#rpsClock   { font-size:34px; font-weight:900; color:#e74c3c; min-height:44px; }
+#rpsWait    { font-size:12px; color:#555; margin-top:4px; min-height:18px; }
+#rpsVerdict { margin-top:14px; font-size:17px; font-weight:800; min-height:26px; }
+#rpsVerdict.win  { color:#2ecc71; }
+#rpsVerdict.lose { color:#e74c3c; }
+#rpsVerdict.draw { color:#f39c12; }
+
 /* ── GAME ── */
 #gameWrap {
   display:none; position:fixed; inset:0;
@@ -148,6 +177,21 @@ canvas { display:block; cursor:crosshair; }
 
 <div id="gameWrap"><canvas id="c"></canvas></div>
 
+<div id="rpsOverlay">
+  <div id="rpsBox">
+    <div id="rpsTitle">⚔️ PIERRE FEUILLE CISEAUX !</div>
+    <div id="rpsDesc"></div>
+    <div id="rpsBtns">
+      <button class="rps-btn" data-choice="rock"     onclick="pickRPS('rock')">🪨</button>
+      <button class="rps-btn" data-choice="paper"    onclick="pickRPS('paper')">📄</button>
+      <button class="rps-btn" data-choice="scissors" onclick="pickRPS('scissors')">✂️</button>
+    </div>
+    <div id="rpsClock"></div>
+    <div id="rpsWait"></div>
+    <div id="rpsVerdict"></div>
+  </div>
+</div>
+
 <script src="/socket.io/socket.io.js"></script>
 <script>
 // ── Character definitions ───────────────────────────────────────────────────
@@ -159,6 +203,7 @@ const CHARS = [
   { id:'neon',    name:'Neon',        req:18, color:'#e91e63', glow:'#f06292', gFill:'#880e4f', gAcc:'#ad1457', bCol:'#f48fb1', desc:'Flamboyant'     },
   { id:'toxic',   name:'Toxic',       req:25, color:'#27ae60', glow:'#2ecc71', gFill:'#145a32', gAcc:'#1e8449', bCol:'#82e0aa', desc:'Radioactif'     },
   { id:'gold',    name:'Or',          req:35, color:'#f39c12', glow:'#f1c40f', gFill:'#7d6608', gAcc:'#d4ac0d', bCol:'#fad7a0', desc:'Légendaire'     },
+  { id:'trump',   name:'Trump',        req:0,  color:'#ff7518', glow:'#ffd700', gFill:'#c97d00', gAcc:'#ffd700', bCol:'#ffd700', desc:'Make Kills Great Again' },
   { id:'rainbow', name:'Arc-en-ciel', req:50, color:'#ffffff', glow:'#fff',    gFill:'#111',    gAcc:'#555',    bCol:null,      desc:'Ultime', rb:true },
 ];
 const CMAP = Object.fromEntries(CHARS.map(c => [c.id, c]));
@@ -316,6 +361,9 @@ let maxKills  = 15;
 let scale     = 1;
 let socket    = null;
 let killFeed  = [];
+let rpsActive    = null;
+let rpsCountdown = null;
+const RPS_CLIENT = ['rock','paper','scissors'];
 
 const keys     = { up:false, down:false, left:false, right:false };
 let mouseAngle = 0;
@@ -371,6 +419,62 @@ function connect(name) {
   });
 
   socket.on('reset', () => { killFeed = []; });
+
+  socket.on('rps_started', d => {
+    killFeed.unshift({ text:`⚔️ RPS : ${d.killer} vs ${d.victim} !`, time:Date.now(), pu:true });
+    if (killFeed.length > 6) killFeed.length = 6;
+  });
+
+  socket.on('rps_challenge', d => {
+    rpsActive = { cid: d.cid, role: d.role, picked: false };
+    document.getElementById('rpsDesc').textContent = d.role === 'killer'
+      ? `Tu as tué ${d.opponent} — gagne le duel pour valider le kill !`
+      : `${d.opponent} t'a tué — bats-le pour annuler le kill !`;
+    document.getElementById('rpsVerdict').textContent = '';
+    document.getElementById('rpsVerdict').className = '';
+    document.getElementById('rpsWait').textContent = '';
+    document.querySelectorAll('.rps-btn').forEach(b => { b.disabled = false; b.classList.remove('picked'); });
+    document.getElementById('rpsOverlay').classList.add('on');
+    let t = 5;
+    document.getElementById('rpsClock').textContent = t;
+    clearInterval(rpsCountdown);
+    rpsCountdown = setInterval(() => {
+      t--;
+      document.getElementById('rpsClock').textContent = t > 0 ? t : '';
+      if (t <= 0) {
+        clearInterval(rpsCountdown);
+        if (!rpsActive.picked) {
+          const auto = RPS_CLIENT[Math.floor(Math.random() * 3)];
+          pickRPS(auto);
+        }
+      }
+    }, 1000);
+  });
+
+  socket.on('rps_result', d => {
+    clearInterval(rpsCountdown);
+    document.getElementById('rpsClock').textContent = '';
+    document.getElementById('rpsWait').textContent  = '';
+    const em = { rock:'🪨', paper:'📄', scissors:'✂️' };
+    const line = d.killerWon
+      ? `${em[d.killerChoice]} vs ${em[d.victimChoice]} — ${d.killerName} gagne ! Kill validé`
+      : d.draw
+        ? `${em[d.killerChoice]} vs ${em[d.victimChoice]} — Égalité ! Kill annulé`
+        : `${em[d.killerChoice]} vs ${em[d.victimChoice]} — ${d.victimName} gagne ! Kill annulé`;
+    killFeed.unshift({ text: line, time: Date.now(), pu: true });
+    if (killFeed.length > 6) killFeed.length = 6;
+    if (rpsActive && rpsActive.cid === d.cid) {
+      const iAmKiller = rpsActive.role === 'killer';
+      const iWon = iAmKiller ? d.killerWon : (!d.killerWon && !d.draw);
+      const vEl  = document.getElementById('rpsVerdict');
+      vEl.textContent = iWon ? '✓ TU GAGNES !' : d.draw ? '= ÉGALITÉ' : '✗ TU PERDS…';
+      vEl.className   = iWon ? 'win' : d.draw ? 'draw' : 'lose';
+      setTimeout(() => {
+        document.getElementById('rpsOverlay').classList.remove('on');
+        rpsActive = null;
+      }, 2400);
+    }
+  });
 }
 
 // ── Input ────────────────────────────────────────────────────────────────────
@@ -643,6 +747,19 @@ function drawBuffs(me) {
     ctx.fillText(Math.ceil((expiry-now)/1000)+'s', bx+26, by-4);
     bx += 60;
   }
+}
+
+function pickRPS(choice) {
+  if (!rpsActive || rpsActive.picked) return;
+  rpsActive.picked = true;
+  socket.emit('rps_pick', { cid: rpsActive.cid, choice });
+  clearInterval(rpsCountdown);
+  document.getElementById('rpsClock').textContent = '';
+  document.querySelectorAll('.rps-btn').forEach(b => {
+    b.disabled = true;
+    if (b.dataset.choice === choice) b.classList.add('picked');
+  });
+  document.getElementById('rpsWait').textContent = 'En attente de l\'adversaire…';
 }
 
 function drawGameOver(w) {
